@@ -1,0 +1,6 @@
+{
+  "contract_version": "1.0.0",
+  "description": "The one data shape shared by RESCUE (writes it) and BUILD (imports it). Summaries only. No message bodies.",
+  "files": ["manifest.json", "households.csv", "people.csv", "contact_methods.csv", "deals.csv", "interactions.csv", "consent.csv", "suppressions.csv", "source_evidence.csv"],
+  "required_files": ["manifest.json", "households.csv", "people.csv", "contact_methods.csv"]
+}

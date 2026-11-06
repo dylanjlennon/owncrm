@@ -1,0 +1,457 @@
+{
+ "ran_at": "2026-11-06T18:08:25.062Z",
+ "passed": 90,
+ "total": 90,
+ "results": [
+  {
+   "name": "logged out is sent to login",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "login page does not contain the owner email (bug 5)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "security headers",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "wrong password is refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "password alone stops at the code step",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "owner without second factor is sent back to the code step",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "real TOTP code in a real browser signs in",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "new device is recorded at sign-in",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "first-run screen shows before anything else",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "first-run shows real cost and who should not use this",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "settings saved",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "contact added",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "contact shows consent, source and source type",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "follow-up due today is on Today",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "search by name finds it",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "search by phone finds it",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "new lead count matches between Today and Contacts (bug 1)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "contact list shows the true total, not the page length (bug 2)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "arbitrary text in the URL is not shown (bug 9)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "public done page ignores unknown codes",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "form creates a contact within 60 seconds",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "exact consent wording, source and time are stored",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "new-lead alert email goes to the owner within 2 minutes",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "honeypot: bot submission pretends to work and stores nothing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "wrong form key is refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "oversized form post is refused",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "scheduler runs with its secret",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "scheduler refuses without its secret",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "first no-reply alert follows on schedule",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "\"I replied\" page does not log anyone in or change anything by itself",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "\"I replied\" stops the reminders",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no second alert after \"I replied\"",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a tampered \"I replied\" link does nothing",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "export neutralizes a formula name (bug 4)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "export keeps phone numbers intact",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "full export has contacts, notes, deals, consent and opt-outs",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "export is refused without login",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "inbound rcv_good accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "inbound rcv_bad accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "inbound webhook refuses a bad signature",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "Realtor.com sample creates a contact",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "scrambled email lands in Needs review with nothing lost",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "Needs review alerts the owner",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "preview shows 480 ready and 20 with problems",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "480 rows imported",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "error file lists the 20 bad rows",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "import emails nobody",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "imported contacts have unknown consent",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "one-click undo removes the import",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "one-to-one email shows \"Sent\", not \"Delivered\"",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "delivery webhook accepted",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a bounce marks the contact",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a bounced address can no longer be emailed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "marketing to a contact with unknown consent is blocked",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "marketing email has an unsubscribe link and one-click header",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "one-click unsubscribe works",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "unsubscribed contact shows opted out",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "deal screen says it is not the transaction file",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "deadline 2 days out appears on Today",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "deadline triggers an email at the local hour",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "watchdog gets a check-in after every run, and /fail when a check failed",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "status says \"You are the IT department\"",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "self-test read every table logged out and found no leak",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "self-test flags public signup when it is on",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "test lead goes form to database to alert and cleans itself up",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "backup report accepted with its secret",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "backup report refused without it",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "go-live will not complete while a check fails",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "red banner on every screen when the scheduler stops",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "history page shows the firm-policy and not-legal-advice notice",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "history token is shown once and never in the address bar",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "the token is not shown again after a reload",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "rescue writes a valid contract folder",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "rescue upload with the token is accepted for review",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "upload refuses a wrong token",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "upload refuses message bodies or extra fields",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "nothing is in contacts before approval",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "approved people saved (new or merged into an existing contact)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "people the rescue created have unknown consent",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "history source shows last successful run",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "contract folder passes the check in the app",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "second import of the same people merges instead of duplicating",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "an invalid contract folder is rejected with an error file",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no message bodies or redacted patterns reached the database",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no sideways scroll at phone width: /today",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no sideways scroll at phone width: /contacts",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no sideways scroll at phone width: /contacts/cf643fba-dd98-40f2-8549-fa56c6b3678b",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no sideways scroll at phone width: /status",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no sideways scroll at phone width: /history",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "sign out everywhere ends this session",
+   "ok": true,
+   "detail": ""
+  }
+ ]
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/interactions.schema.json",
+  "title": "interactions",
+  "description": "Summaries only. Never paste message text here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "household_id",
+    "kind",
+    "occurred_on"
+  ],
+  "properties": {
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "call",
+        "text",
+        "email",
+        "meeting",
+        "showing",
+        "note"
+      ]
+    },
+    "occurred_on": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 400
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/consent.schema.json",
+  "title": "consent",
+  "description": "Consent claims. The importer keeps opt-outs and treats every opt-in as unknown until you confirm it in the app.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "household_id",
+    "status",
+    "source"
+  ],
+  "properties": {
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "person_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unknown",
+        "opted_in",
+        "opted_out"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "maxLength": 300,
+      "minLength": 1
+    },
+    "recorded_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "wording": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 1000
+    }
+  }
+}

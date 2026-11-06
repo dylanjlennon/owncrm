@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/contact_methods.schema.json",
+  "title": "contact_methods",
+  "description": "Emails and phone numbers.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "household_id",
+    "kind",
+    "value"
+  ],
+  "properties": {
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "person_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "email",
+        "phone"
+      ]
+    },
+    "value": {
+      "type": "string",
+      "maxLength": 320,
+      "minLength": 3
+    }
+  }
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/households.schema.json",
+  "title": "households",
+  "description": "One row per relationship (a couple, co-buyers, one person). summary is a short AI or human summary, never message text.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "household_id",
+    "display_name",
+    "stage",
+    "source_type"
+  ],
+  "properties": {
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "display_name": {
+      "type": "string",
+      "maxLength": 200,
+      "minLength": 1
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "new lead",
+        "active buyer",
+        "active seller",
+        "under contract",
+        "past client",
+        "sphere",
+        "nurture",
+        "cold lead",
+        "do not contact"
+      ]
+    },
+    "lead_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "firm_provided",
+        "portal",
+        "unknown"
+      ]
+    },
+    "first_contact_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "last_contact_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 280
+    },
+    "suggested_next_step": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "suggested_next_step_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "why": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 300
+    }
+  }
+}

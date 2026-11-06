@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/suppressions.schema.json",
+  "title": "suppressions",
+  "description": "Opt-outs. Always imported. Never removed by the app.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "value"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": [
+        "email",
+        "phone"
+      ]
+    },
+    "value": {
+      "type": "string",
+      "maxLength": 320,
+      "minLength": 3
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    }
+  }
+}

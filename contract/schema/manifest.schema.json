@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/manifest.schema.json",
+  "title": "manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "created_at"
+  ],
+  "properties": {
+    "contract_version": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "created_at": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "created_by": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "gmail",
+          "outlook",
+          "imessage",
+          "google_voice",
+          "phone_contacts",
+          "android_sms",
+          "crm_export",
+          "deal_records",
+          "website_lists",
+          "manual"
+        ]
+      },
+      "maxItems": 20
+    },
+    "range_start": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "range_end": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 500
+    }
+  }
+}

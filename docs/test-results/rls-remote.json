@@ -1,0 +1,8 @@
+{
+  "ran_at": "2026-11-06T18:02Z",
+  "how": "supabase/tests/rls.sql pasted whole into execute_sql on the test project. Real roles (anon, authenticated, service_role) with SET LOCAL ROLE and request.jwt.claims. Everything rolls back.",
+  "total": 186,
+  "passed": 186,
+  "failed": 0,
+  "also": "A separate rolled-back block inserted a third auth.users row after the owner existed; the database refused it with: This install has one login. New accounts are refused."
+}

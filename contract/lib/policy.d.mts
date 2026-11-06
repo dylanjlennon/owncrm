@@ -1,0 +1,9 @@
+export const HISTORY_SOURCES: string[];
+export const EVIDENCE_TYPES: string[];
+export const SUGGESTED_STAGES: string[];
+export const ROW_FIELDS: string[];
+export function mentionsProtectedTrait(text: string | null | undefined): boolean;
+export const SENSITIVE_TOPICS: Record<string, RegExp>;
+export const REAL_ESTATE_SIGNAL: RegExp;
+export function classifyTopic(text: string): string;
+export function looksLikeInstructions(text: string | null | undefined): boolean;

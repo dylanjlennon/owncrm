@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/people.schema.json",
+  "title": "people",
+  "description": "People in each household.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "person_id",
+    "household_id",
+    "first_name"
+  ],
+  "properties": {
+    "person_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "first_name": {
+      "type": "string",
+      "maxLength": 100,
+      "minLength": 1
+    },
+    "last_name": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 100
+    },
+    "role": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 40
+    }
+  }
+}

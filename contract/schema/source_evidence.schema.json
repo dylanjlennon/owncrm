@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/source_evidence.schema.json",
+  "title": "source_evidence",
+  "description": "Where each relationship was found: dates and counts only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "household_id",
+    "source",
+    "evidence_type"
+  ],
+  "properties": {
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "gmail",
+        "outlook",
+        "imessage",
+        "google_voice",
+        "phone_contacts",
+        "android_sms",
+        "crm_export",
+        "deal_records",
+        "website_lists",
+        "manual"
+      ]
+    },
+    "evidence_type": {
+      "type": "string",
+      "enum": [
+        "email_metadata",
+        "text_metadata",
+        "call_log",
+        "voicemail_metadata",
+        "contact_card",
+        "crm_export",
+        "deal_record",
+        "website_list"
+      ]
+    },
+    "first_seen_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "last_seen_on": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "message_count": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{1,7}$"
+    },
+    "why": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 300
+    }
+  }
+}

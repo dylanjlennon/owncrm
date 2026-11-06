@@ -1,0 +1,60 @@
+# Nightly encrypted backup, checked before it counts.
+# Runs on GitHub's computers, not on Vercel or Supabase, so it keeps working if the app is down.
+# Needs repository secrets: SUPABASE_DB_URL, BACKUP_AGE_RECIPIENT, OWNCRM_URL, BACKUP_REPORT_SECRET,
+# and optionally HEALTHCHECK_BACKUP_URL. Use a PRIVATE repository. The file is encrypted either way.
+name: nightly-backup
+on:
+  schedule:
+    - cron: '17 7 * * *' # 07:17 UTC, about 3am Eastern
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Install Postgres 17 client and age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-common age
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y -qq postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+      - name: Get last night's manifest
+        uses: actions/cache/restore@v4
+        with:
+          path: backups/manifest-latest.json
+          key: backup-manifest-${{ github.run_id }}
+          restore-keys: backup-manifest-
+      - name: Back up, check and encrypt
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          OWNCRM_URL: ${{ secrets.OWNCRM_URL }}
+          BACKUP_REPORT_SECRET: ${{ secrets.BACKUP_REPORT_SECRET }}
+          HEALTHCHECK_BACKUP_URL: ${{ secrets.HEALTHCHECK_BACKUP_URL }}
+          BACKUP_PREVIOUS_MANIFEST: backups/manifest-latest.json
+        run: |
+          [ -f backups/manifest-latest.json ] && cp backups/manifest-latest.json backups/previous.json && export BACKUP_PREVIOUS_MANIFEST=backups/previous.json
+          node scripts/backup.mjs
+      - name: Keep tonight's manifest for tomorrow's comparison
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: backups/manifest-latest.json
+          key: backup-manifest-${{ github.run_id }}
+      - name: Store the encrypted backup off the platform (kept 30 days)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-backup-${{ github.run_id }}
+          path: |
+            backups/*.age
+            backups/manifest-*.json
+          retention-days: 30
+          if-no-files-found: error

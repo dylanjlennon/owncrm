@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://owncrm.example/contract/1/deals.schema.json",
+  "title": "deals",
+  "description": "Deals from your own records. Your firm's file stays the official record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "deal_id",
+    "household_id",
+    "side",
+    "status"
+  ],
+  "properties": {
+    "deal_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "household_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "side": {
+      "type": "string",
+      "enum": [
+        "buyer",
+        "seller"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "prospect",
+        "active",
+        "under contract",
+        "closed",
+        "dead"
+      ]
+    },
+    "property_street": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "closing_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "net_to_me": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^-?\\d{1,10}(\\.\\d{1,2})?$"
+    }
+  }
+}

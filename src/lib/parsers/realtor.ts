@@ -1,0 +1,56 @@
+// Parser for Realtor.com lead notification emails, forwarded to the inbound address.
+// IMPORTANT: this matches a sample written from public descriptions. Check it against a
+// real email before you rely on it. If the template changes, leads go to Needs review.
+export type ParsedLead = {
+  first_name: string; last_name: string | null; email: string | null; phone: string | null;
+  property: string | null; message: string | null; source: string; source_type: 'portal';
+};
+export type ParseResult = { ok: true; lead: ParsedLead } | { ok: false; reason: string };
+
+const LABELS: Record<string, RegExp> = {
+  name: /^(?:lead\s+|buyer\s+|contact\s+)?(?:full\s+)?name\s*[:\-]\s*(.+)$/im,
+  first: /^first\s*name\s*[:\-]\s*(.+)$/im,
+  last: /^last\s*name\s*[:\-]\s*(.+)$/im,
+  email: /^(?:e-?mail(?:\s+address)?)\s*[:\-]\s*(.+)$/im,
+  phone: /^(?:phone(?:\s+number)?|mobile|tel)\s*[:\-]\s*(.+)$/im,
+  property: /^(?:property(?:\s+address)?|listing(?:\s+address)?|address)\s*[:\-]\s*(.+)$/im,
+  message: /^(?:message|comments?)\s*[:\-]\s*(.+)$/im,
+};
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+export function looksLikeRealtor(from: string | null, subject: string | null, text: string): boolean {
+  const hay = `${from ?? ''}\n${subject ?? ''}\n${text.slice(0, 4000)}`.toLowerCase();
+  return hay.includes('realtor.com');
+}
+
+function grab(text: string, re: RegExp): string | null {
+  const m = text.match(re);
+  return m ? m[1].trim().replace(/\s+/g, ' ').slice(0, 300) : null;
+}
+
+export function parseRealtorLead(from: string | null, subject: string | null, rawText: string): ParseResult {
+  if (!rawText || !rawText.trim()) return { ok: false, reason: 'The email had no readable text.' };
+  if (!looksLikeRealtor(from, subject, rawText)) return { ok: false, reason: 'Not from a sender we have a template for.' };
+  // Forwarding adds "> " at the start of each line.
+  const text = rawText.replace(/^[> \t]+/gm, '');
+  let first = grab(text, LABELS.first);
+  let last = grab(text, LABELS.last);
+  const full = grab(text, LABELS.name);
+  if (!first && full) {
+    const bits = full.split(' ');
+    first = bits[0];
+    last = bits.slice(1).join(' ') || null;
+  }
+  const emailRaw = grab(text, LABELS.email);
+  const emailClean = emailRaw?.replace(/^<|>$/g, '').replace(/\s*\(.*\)$/, '') ?? null;
+  const email = emailClean && EMAIL_RE.test(emailClean) ? emailClean : null;
+  const phoneRaw = grab(text, LABELS.phone);
+  const phone = phoneRaw && phoneRaw.replace(/\D/g, '').length >= 10 ? phoneRaw : null;
+  if (!first) return { ok: false, reason: 'Could not find a name. The template may have changed.' };
+  if (!email && !phone) return { ok: false, reason: 'Could not find an email or phone. The template may have changed.' };
+  return { ok: true, lead: {
+    first_name: first, last_name: last, email, phone,
+    property: grab(text, LABELS.property), message: grab(text, LABELS.message),
+    source: 'Realtor.com', source_type: 'portal',
+  } };
+}
