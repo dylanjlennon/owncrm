@@ -1,9 +1,19 @@
 // @ts-check
 // Shared rules for "Connect your history". The local tool and the CRM server both use
 // this file, so the rules can't drift apart.
-import { normalizeText } from './redact.mjs';
+import { normalizeText, MAX_CHECK_CHARS } from './redact.mjs';
 // Word lists also ignore accents, so "cáncer" reads as "cancer".
 const plain = (/** @type {string} */ t) => normalizeText(t).normalize('NFD').replace(/\p{M}/gu, '');
+// A value longer than MAX_CHECK_CHARS is refused by the checks that refuse (it is "too long to
+// check"). The two that only label text (topic, possible instructions) read a long email body in
+// pieces of that size, overlapping so a phrase split between two pieces is still seen.
+const tooLong = (/** @type {string} */ t) => t.length > MAX_CHECK_CHARS;
+function pieces(/** @type {string} */ t) {
+  if (!tooLong(t)) return [t];
+  const out = [];
+  for (let i = 0; i < t.length; i += MAX_CHECK_CHARS - 200) out.push(t.slice(i, i + MAX_CHECK_CHARS));
+  return out;
+}
 
 /** Sources the CRM accepts from the local tool. */
 export const HISTORY_SOURCES = ['gmail','outlook','imessage','google_voice','phone_contacts','android_sms','crm_export','deal_records','website_lists'];
@@ -26,7 +36,8 @@ const PROTECTED_RE = new RegExp(`\\b(${PROTECTED.map((w) => w.replace(/ /g, '\\s
 
 /** @param {string | null | undefined} text */
 export function mentionsProtectedTrait(text) {
-  return !!text && PROTECTED_RE.test(plain(text));
+  if (!text) return false;
+  return tooLong(text) || PROTECTED_RE.test(plain(text));
 }
 
 // Topics that are never summarized and keep a thread out of scope.
@@ -39,8 +50,9 @@ export const REAL_ESTATE_SIGNAL = /\b(house|home|listing|showing|offer|closing|e
 
 /** @param {string} text */
 export function classifyTopic(text) {
-  for (const [name, re] of Object.entries(SENSITIVE_TOPICS)) if (re.test(text)) return name;
-  return REAL_ESTATE_SIGNAL.test(text) ? 'real_estate' : 'unrelated';
+  const parts = pieces(String(text));
+  for (const [name, re] of Object.entries(SENSITIVE_TOPICS)) if (parts.some((p) => re.test(p))) return name;
+  return parts.some((p) => REAL_ESTATE_SIGNAL.test(p)) ? 'real_estate' : 'unrelated';
 }
 
 // Health and legal matters. The importer (contract check, spreadsheet import, history upload)
@@ -58,7 +70,8 @@ export const HEALTH_LEGAL_RE = new RegExp([
 ].join('|'), 'i');
 /** @param {string | null | undefined} text */
 export function mentionsHealthOrLegal(text) {
-  return !!text && HEALTH_LEGAL_RE.test(plain(text));
+  if (!text) return false;
+  return tooLong(text) || HEALTH_LEGAL_RE.test(plain(text));
 }
 
 // Text copied from an email that tries to give orders. Refused in summaries.
@@ -76,11 +89,12 @@ const INSTRUCTION_PATTERNS = [
   String.raw`\bsystem prompt\b|\byou are now\b|\bdo not tell the (user|owner)\b|\bjailbreak\b|\bdeveloper mode\b`,
   String.raw`\b(pretend|act as if|act like|behave as if)\b[^.\n]{0,20}\b(you|you're|you are|to be)\b`,
   String.raw`\b(approve|mark)\b[^.\n]{0,20}\b(every|everyone|all)\b[^.\n]{0,20}\b(candidates?|people|contacts|rows|approved)\b|\bapprove every(one|body)?\b`,
-  String.raw`<\/?\s*(system|assistant|user|instructions?|prompt)\s*>|^\s*(system|assistant)\s*:`,
+  String.raw`<\/?[ \t]{0,3}(system|assistant|user|instructions?|prompt)[ \t]{0,3}>|^[ \t]{0,20}(system|assistant)[ \t]{0,3}:`,
   String.raw`[A-Za-z0-9+/]{40,}={0,2}`,
 ];
 const INSTRUCTION_RE = new RegExp(INSTRUCTION_PATTERNS.join('|'), 'im');
 /** @param {string | null | undefined} text */
 export function looksLikeInstructions(text) {
-  return !!text && INSTRUCTION_RE.test(normalizeText(text));
+  if (!text) return false;
+  return pieces(String(text)).some((p) => INSTRUCTION_RE.test(normalizeText(p)));
 }
