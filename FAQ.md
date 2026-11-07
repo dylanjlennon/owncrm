@@ -26,11 +26,13 @@
 
 **Is this legal advice?** No. It records consent and blocks known opt-outs. It can't tell you whether a message or a use of data is allowed.
 
-**What if a forwarded lead email changes format?** It lands in Needs review and you get an email. Nothing is lost. The Realtor.com reader was built from a sample; check it against a real lead email after setup.
+**What if a forwarded lead email changes format?** It lands in Needs review and you get an email naming the sender and subject. Nothing is lost. The reader for Realtor.com, Zillow, Homes.com, Trulia and Redfin emails was built from samples; check it against a real lead email from each site you use, after setup.
 
 **What happens if Vercel, Supabase or Resend has an outage?** The CRM goes down with it. The outside watchdog emails you. Leads sent to your form during an outage are lost, so also have your form email you a copy.
 
-**What happens if spam floods my web form?** Nothing is lost. One visitor address can send 10 posts in 10 minutes; more are turned away without blocking anyone else. If more than 60 posts arrive in an hour, they are all saved but listed in a "Many new leads" email instead of one email each, and you get one "Your web form is being flooded" email. Real leads are in that list, so read it.
+**What happens if spam floods my web form?** Nothing is lost. One visitor address can send 10 posts in 10 minutes; more are turned away without blocking anyone else. Each address gets one-by-one "New lead" emails for 3 leads a day; after that its leads come in a "Many new leads" list, about once an hour. A real lead from any other address still gets its own email, its reminders and the email to your backup contact. If more than 60 posts arrive in an hour you also get one "Your web form is being flooded" email. If a flood comes from many addresses at once and uses up the day's lead emails, the rest go in the list too, so read it.
+
+**Why did the importer refuse a row about a house?** The health and legal word list is careful, but it now lets ordinary real estate wording through: street names ("Prison Camp Rd", "Hospital Dr"), buildings ("old jail renovated into lofts", "close to Mission Hospital"), "no pending litigation" in an HOA disclosure, "foreclosure listing", "full rehab", "a stroke of luck". The same words about a person are still refused. A zip code next to a year ("28801 2019") is no longer read as a Social Security number. Very long cells (over 10,000 characters) are refused as "too long to check".
 
 **Does the CRM keep the spreadsheets I import?** No. It keeps only the rows that passed the checks, and only until you finish the import (or a day). Refused rows are never saved, not even in the error file, which lists line numbers and reasons only.
 

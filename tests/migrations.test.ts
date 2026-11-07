@@ -23,5 +23,7 @@ describe('N15: deploy order', () => {
     const howto = readFileSync(join(__dirname, '..', 'HOW-TO.md'), 'utf8');
     expect(howto).toMatch(/migrations?\W*(first|before)/i);
     expect(howto).toMatch(/20261107000200_review_fixes_2\.sql/);
+    expect(howto).toMatch(/20261107000300_alert_gate\.sql/);
+    expect(howto).toMatch(/Stopped before changing anything/);
   });
 });

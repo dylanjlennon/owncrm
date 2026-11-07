@@ -26,4 +26,6 @@ Expected: functions `private.owncrm_probe6`, `owncrm_probe7`, `owncrm_probe8` an
 
 ## Migrations not yet applied to the test project
 
+`supabase/migrations/20261107000300_alert_gate.sql` (the whole alert decision in one database function under one lock, alerts counted toward the monthly limit) and `20261107000200_review_fixes_2.sql` have also been tested only locally (`npm run test:db` runs 40 parallel alert requests on a throwaway Postgres). Apply 0100, 0200 and 0300 in order on the test project, then run `supabase/tests/rls.sql`.
+
 `supabase/migrations/20261107000100_review_fixes.sql` (owner-only helper functions, the alert ceiling in the send gate, the all-clear default, dropping the unused AI key table, repeating follow-ups) has been tested on a blank local Postgres by `npm run gate`, but not yet applied to the test project. Paste it into the test project's SQL editor, then run `supabase/tests/rls.sql` there and check every test passes. Until then, `npm run e2e` runs against the older schema (it is written to pass on both).
