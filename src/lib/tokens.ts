@@ -12,10 +12,21 @@ export function signLink(secret: string, purpose: LinkPurpose, subject: string, 
   return `${payload}.${createHmac('sha256', secret).update(payload).digest('base64url')}`;
 }
 
+// A token is exactly "payload.signature", both plain base64url. Anything else (a third
+// segment, padding, spaces) is refused, so there is only one spelling of each valid link.
+const B64URL = /^[A-Za-z0-9_-]+$/;
+function splitToken(token: unknown): { payload: string; sig: string } | null {
+  if (typeof token !== 'string' || token.length > 2000) return null;
+  const parts = token.split('.');
+  if (parts.length !== 2 || !B64URL.test(parts[0]) || !B64URL.test(parts[1])) return null;
+  return { payload: parts[0], sig: parts[1] };
+}
+
 export function verifyLink(secret: string | undefined, purpose: LinkPurpose, token: unknown, nowMs = Date.now()): string | null {
-  if (!secret || typeof token !== 'string' || token.length > 2000) return null;
-  const [payload, sig] = token.split('.');
-  if (!payload || !sig) return null;
+  if (!secret) return null;
+  const parts = splitToken(token);
+  if (!parts) return null;
+  const { payload, sig } = parts;
   const expected = createHmac('sha256', secret).update(payload).digest('base64url');
   if (!constantTimeEqual(sig, expected)) return null;
   try {
@@ -45,7 +56,9 @@ export async function consumeLink(db: SupabaseClient, secret: string | undefined
   Promise<{ ok: true; subject: string } | { ok: false; reason: 'bad_link' | 'link_used' }> {
   const subject = verifyLink(secret, purpose, token);
   if (!subject) return { ok: false, reason: 'bad_link' };
-  const id = createHash('sha256').update(String(token)).digest('hex').slice(0, 40);
+  // The "used" marker is a hash of exactly what the checker verified (the signed payload),
+  // not of the raw string, so no other spelling of the same link counts as a new link.
+  const id = createHash('sha256').update(splitToken(token)!.payload).digest('hex').slice(0, 40);
   const { data, error } = await db.rpc('hit_rate_limit', { p_bucket: `once:${purpose}:${id}`, p_max: 1, p_window_seconds: USED_LINK_MEMORY_SECONDS });
   if (error) return { ok: false, reason: 'bad_link' };
   return data === true ? { ok: true, subject } : { ok: false, reason: 'link_used' };

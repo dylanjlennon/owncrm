@@ -42,4 +42,18 @@ describe('M4: signed links', () => {
     const payload = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString());
     expect(payload.e - Date.now() / 1000).toBeLessThanOrEqual(86400 + 5);
   });
+  it('N4: adding a segment or padding does not make a used link work again', async () => {
+    const db = fakeDb({ rpc: { hit_rate_limit: rateLimitRpc } });
+    const t = signLink(secret, 'wasnt_me', 'user-1', LINK_TTL_SECONDS.wasnt_me);
+    expect((await consumeLink(db as any, secret, 'wasnt_me', t)).ok).toBe(true);
+    for (const variant of [`${t}.1`, `${t}.2`, `${t}.`, `${t}=`, ` ${t}`, `${t.split('.')[0]}..${t.split('.')[1]}`]) {
+      expect((await consumeLink(db as any, secret, 'wasnt_me', variant)).ok, variant).toBe(false);
+    }
+  });
+  it('N4: a fresh link with an extra segment is refused outright', async () => {
+    const db = fakeDb({ rpc: { hit_rate_limit: rateLimitRpc } });
+    const t = signLink(secret, 'lead_replied', 'lead-9', 3600);
+    expect(await consumeLink(db as any, secret, 'lead_replied', `${t}.x`)).toEqual({ ok: false, reason: 'bad_link' });
+    expect((await consumeLink(db as any, secret, 'lead_replied', t)).ok).toBe(true);
+  });
 });
