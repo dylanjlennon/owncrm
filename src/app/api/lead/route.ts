@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   const isTest = constantTimeEqual(req.headers.get('x-owncrm-selftest'), env.cronSecret());
   if (!isTest) {
     const okIp = (await db.rpc('hit_rate_limit', { p_bucket: ipBucket(req, 'lead'), p_max: 10, p_window_seconds: 600 })).data;
-    const okAll = (await db.rpc('hit_rate_limit', { p_bucket: 'lead:all', p_max: 300, p_window_seconds: 3600 })).data;
+    const okAll = (await db.rpc('hit_rate_limit', { p_bucket: 'lead:all', p_max: 60, p_window_seconds: 3600 })).data;
     if (okIp !== true || okAll !== true) return json({ error: 'Too many requests. Try again later.' }, 429);
   }
   const first = clean(f.first_name, 100);

@@ -206,7 +206,9 @@ export function buildContract(candidates, reviewText, outDir, meta) {
     const c = byId.get(r[idx('candidate_id')]);
     if (c) approved.set(c.candidate_id, { c, row: r });
   }
-  const households = []; const people = []; const methods = []; const evidence = []; const deals = [];
+  const households = []; const people = []; const methods = []; const evidence = [];
+  /** @type {any[]} */
+  const deals = [];
   /** @type {Map<string, string>} */
   const home = new Map();
   for (const [id, { row }] of approved) {

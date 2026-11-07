@@ -4,7 +4,9 @@ import { getSettings, type Settings } from './settings';
 import { leadAlertText, sendAlert } from './alerts';
 import { dealReminderDue, noReplyDue } from './logic';
 import { localDate, localHour, localWeekday, weekStart, formatDate } from './time';
-import { lastSuccess, runJob } from './jobs';
+import { lastSuccess, lastFinished, runJob } from './jobs';
+import { loadHealth } from './health-load';
+import { failingChecks, type Check } from './health';
 
 export type TickDeps = {
   db: SupabaseClient; adapter: EmailAdapter; appUrl: string; linkSecret?: string; now: Date;
@@ -63,15 +65,59 @@ async function dealReminders(d: TickDeps, s: Settings) {
   return { ok: true, detail: `${sent} key date reminders sent.` };
 }
 
+// A failed job is retried, but not on every 5-minute tick: at most once per retry window.
+// Without this, one failing weekly check reran (and emailed) every few minutes.
+const RETRY_HOURS = { daily: 1, weekly: 6 };
+async function retryWait(db: SupabaseClient, job: string, now: Date, hours: number) {
+  const last = await lastFinished(db, job);
+  return !!last && now.getTime() - Date.parse(last) < hours * 3600000;
+}
 async function dueOncePerDay(db: SupabaseClient, job: string, s: Settings, now: Date, hour: number) {
   if (localHour(now, s.timezone) < hour) return false;
   const last = await lastSuccess(db, job);
-  return !last || localDate(new Date(last), s.timezone) !== localDate(now, s.timezone);
+  const due = !last || localDate(new Date(last), s.timezone) !== localDate(now, s.timezone);
+  return due && !(await retryWait(db, job, now, RETRY_HOURS.daily));
 }
 async function dueOncePerWeek(db: SupabaseClient, job: string, s: Settings, now: Date, hour: number) {
   if (localHour(now, s.timezone) < hour) return false;
   const last = await lastSuccess(db, job);
-  return !last || weekStart(localDate(new Date(last), s.timezone)) !== weekStart(localDate(now, s.timezone));
+  const due = !last || weekStart(localDate(new Date(last), s.timezone)) !== weekStart(localDate(now, s.timezone));
+  return due && !(await retryWait(db, job, now, RETRY_HOURS.weekly));
+}
+
+// Checks whose failure also goes to the backup contact.
+const ESCALATE = new Set(['backup', 'watchdog', 'self_test', 'fake_lead', 'sending']);
+// What to do, in one line, for each red check. The same words are in HOW-TO.md.
+export const CHECK_FIX: Record<string, string> = {
+  tick: 'The scheduler stopped. Check the Cron Jobs tab in Vercel and that your plan allows a 5-minute schedule.',
+  watchdog: 'The app could not reach the outside watchdog. Check HEALTHCHECK_PING_URL in Vercel.',
+  backup: 'The nightly backup stopped or failed. Open the Actions tab of your GitHub repository and read the last "Nightly backup" run.',
+  self_test: 'The logged-out read test failed. If it says public signup is on, turn it off in Supabase. If a table is readable, stop and get help.',
+  fake_lead: 'The weekly test lead did not make it through. Send a test lead from Status and read what it says.',
+  domain_check: 'Your sending domain lost its DNS records. Open Resend, Domains, and fix the records it shows.',
+  sending: 'Sending is paused after bounces or a complaint. Read the reason on Status before turning it back on.',
+  quota: 'You are close to your email allowance. Check for a loop or spam on your form, or raise your plan.',
+  db_size: 'The database is almost full. Export old data or move to a bigger plan.',
+  history_sync: 'The history sync on your computer has not checked in. It only runs when that computer is on and signed in.',
+};
+
+async function alertFailingChecks(d: TickDeps, s: Settings, checks: Check[]) {
+  let sent = 0;
+  for (const c of failingChecks(checks)) {
+    if (c.key === 'tick') continue; // The scheduler is running right now. The watchdog reports silence.
+    const r = await sendAlert(d.db, d.adapter, s, d.appUrl, {
+      subject: `Problem: ${c.label}`, key: `check:${c.key}`, alsoBackup: ESCALATE.has(c.key),
+      text: `${c.label} is red.\n\nWhat it says: ${c.detail}\nWhat to do: ${CHECK_FIX[c.key] ?? 'Open Status for details.'}\n\nOpen Status: ${d.appUrl}/status\n\nYou get this once every 12 hours while it stays red.`,
+    }, d.now);
+    sent += r.sent;
+  }
+  return sent;
+}
+
+function ago(iso: string | null | undefined, now: Date) {
+  if (!iso) return 'never';
+  const h = (now.getTime() - Date.parse(iso)) / 3600000;
+  return h < 1 ? `${Math.max(1, Math.round(h * 60))} minutes ago` : h < 48 ? `${Math.round(h)} hours ago` : `${Math.round(h / 24)} days ago`;
 }
 
 export async function runTick(d: TickDeps) {
@@ -97,32 +143,36 @@ export async function runTick(d: TickDeps) {
       })).ok;
     }
     if (await dueOncePerWeek(d.db, 'self_test', s, d.now, 6)) {
-      const r = await runJob(d.db, 'self_test', d.selfTest);
-      outcomes.self_test = r.ok;
-      if (!r.ok) await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: 'Security self-test failed', text: `${r.detail}\n\nOpen Status: ${d.appUrl}/status`, alsoBackup: true });
+      outcomes.self_test = (await runJob(d.db, 'self_test', d.selfTest)).ok;
     }
     if (s.weekly_fake_lead_enabled && localWeekday(d.now, s.timezone) === 'Mon' && await dueOncePerWeek(d.db, 'fake_lead', s, d.now, 7)) {
-      const r = await runJob(d.db, 'fake_lead', d.fakeLead);
-      outcomes.fake_lead = r.ok;
-      if (!r.ok) await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: 'Weekly test lead failed', text: `${r.detail}\n\nYour lead path may be broken. Open Status: ${d.appUrl}/status`, alsoBackup: true });
+      outcomes.fake_lead = (await runJob(d.db, 'fake_lead', d.fakeLead)).ok;
     }
-    if (s.history_sync_expected_hours) {
-      const { data: src } = await d.db.from('history_sources').select('last_success_at').order('last_success_at', { ascending: false, nullsFirst: false }).limit(1).maybeSingle();
-      const last = src?.last_success_at ? Date.parse(src.last_success_at) : 0;
-      if (d.now.getTime() - last > s.history_sync_expected_hours * 3600000 && await dueOncePerDay(d.db, 'history_stale_alert', s, d.now, 9)) {
-        await runJob(d.db, 'history_stale_alert', async () => {
-          await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: 'History sync has not run', text: 'The scheduled history sync on your computer has not checked in. It only runs when that computer is on and signed in.' });
-          return { ok: true, detail: 'Stale history sync alert sent.' };
-        });
-      }
-    }
+    // Every red check on Status, not just the jobs that ran in this tick: a backup that stopped
+    // days ago, a watchdog that can't be reached, a failed self-test. One email per check per
+    // 12 hours, inside the alert budget.
+    const checks = await loadHealth(d.db, s);
+    const red = failingChecks(checks).filter((c) => c.key !== 'tick');
+    for (const c of red) outcomes[`check:${c.key}`] = false;
+    await alertFailingChecks(d, s, checks);
+
     if (s.all_clear_enabled && await dueOncePerDay(d.db, 'all_clear', s, d.now, s.all_clear_local_hour)) {
       await runJob(d.db, 'all_clear', async () => {
-        const failed = Object.entries(outcomes).filter(([, v]) => !v).map(([k]) => k);
+        const failedJobs = Object.entries(outcomes).filter(([k, v]) => !v && !k.startsWith('check:')).map(([k]) => k);
+        const problems = [...red.map((c) => `${c.label}: ${c.detail}`), ...failedJobs.map((k) => `${k} failed in this run`)];
+        const backup = checks.find((c) => c.key === 'backup');
+        const watchdog = checks.find((c) => c.key === 'watchdog');
+        const facts = [
+          `Last backup: ${ago(backup?.lastSuccessAt, d.now)}.`,
+          `Outside watchdog: ${watchdog?.state === 'not_set_up' ? 'not set up yet' : `last check-in ${ago(watchdog?.lastSuccessAt, d.now)}`}.`,
+          `Checks on Status that are red: ${red.length}.`,
+        ].join('\n');
         const r = await sendAlert(d.db, d.adapter, s, d.appUrl, {
-          subject: failed.length ? 'Daily check: something needs attention' : 'Daily check: all clear',
-          text: failed.length ? `These checks failed: ${failed.join(', ')}. Open Status: ${d.appUrl}/status` : `Everything ran. If this email ever does not arrive by ${s.all_clear_local_hour}:15, something is wrong. Open Status: ${d.appUrl}/status`,
-        });
+          subject: problems.length ? 'Daily check: something needs attention' : 'Daily check: all clear',
+          text: problems.length
+            ? `These need attention:\n- ${problems.join('\n- ')}\n\n${facts}\n\nOpen Status: ${d.appUrl}/status`
+            : `Every check on Status is working.\n\n${facts}\n\nIf this email ever does not arrive by ${s.all_clear_local_hour}:15, something is wrong. Open Status: ${d.appUrl}/status`,
+        }, d.now);
         return { ok: r.ok, detail: r.ok ? 'Daily all-clear sent.' : 'Could not send the daily all-clear.' };
       });
     }
@@ -142,5 +192,6 @@ export async function runTick(d: TickDeps) {
       return { ok: res.ok, detail: res.ok ? (anyFailed ? 'Checked in and reported a failed check.' : 'Checked in.') : `Watchdog answered ${res.status}.` };
     });
   }
-  return { ok: !anyFailed, detail: tick.detail };
+  // ran: the scheduler itself worked. ok: and every check is green.
+  return { ok: !anyFailed, ran: tick.ok, detail: tick.detail };
 }

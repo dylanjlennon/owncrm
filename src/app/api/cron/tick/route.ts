@@ -21,7 +21,9 @@ async function handle(req: Request) {
     selfTest: () => runSelfTest(db, anonClient(), env.supabaseUrl(), env.supabaseAnonKey()),
     fakeLead: () => runFakeLead(db, env.appUrl(), env.leadFormKey(), env.cronSecret()),
   });
-  return json({ ok: result.ok, detail: result.detail }, result.ok ? 200 : 500);
+  // 200 when the scheduler ran, even if a check is red (that goes to the watchdog and email).
+  // 500 only when the scheduler itself broke.
+  return json({ ok: result.ok, ran: result.ran, detail: result.detail }, result.ran ? 200 : 500);
 }
 export const GET = handle;
 export const POST = handle;

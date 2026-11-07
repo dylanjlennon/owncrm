@@ -7,3 +7,5 @@ export const SENSITIVE_TOPICS: Record<string, RegExp>;
 export const REAL_ESTATE_SIGNAL: RegExp;
 export function classifyTopic(text: string): string;
 export function looksLikeInstructions(text: string | null | undefined): boolean;
+export const HEALTH_LEGAL_RE: RegExp;
+export function mentionsHealthOrLegal(text: string | null | undefined): boolean;
