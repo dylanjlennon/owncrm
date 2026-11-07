@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { EmailAdapter } from './email/adapter';
 import { getSettings, type Settings } from './settings';
-import { leadAlertText, sendAlert } from './alerts';
+import { leadAlertText, sendAlert, sendLeadDigest } from './alerts';
 import { dealReminderDue, noReplyDue } from './logic';
 import { localDate, localHour, localWeekday, weekStart, formatDate } from './time';
 import { lastSuccess, lastFinished, runJob } from './jobs';
@@ -18,7 +18,8 @@ export type TickDeps = {
 async function noReplyAlerts(d: TickDeps, s: Settings) {
   const since = new Date(d.now.getTime() - 3 * 86400000).toISOString();
   const { data: leads } = await d.db.from('leads').select('id, household_id, source, received_at, first_alert_at, second_alert_at, replied_at, message')
-    .is('replied_at', null).eq('is_test', false).gte('received_at', since).limit(200);
+    .is('replied_at', null).eq('is_test', false).is('alert_held', null).gte('received_at', since)
+    .order('received_at', { ascending: false }).limit(200);
   let sent = 0;
   for (const lead of leads ?? []) {
     const due = noReplyDue(lead, s.no_reply_first_minutes, s.no_reply_second_minutes, d.now);
@@ -28,20 +29,26 @@ async function noReplyAlerts(d: TickDeps, s: Settings) {
       subject: `${due === 'first' ? 'No reply yet' : 'Still no reply'}: ${h?.display_name ?? 'new lead'}`,
       text: leadAlertText(d.appUrl, d.linkSecret, lead, { name: h?.display_name ?? 'Unknown', phone: h?.primary_phone, email: h?.primary_email, message: lead.message }, due),
       alsoBackup: due === 'second', leadId: lead.id, householdId: lead.household_id,
-    });
+    }, d.now);
     if (r.ok) {
       await d.db.from('leads').update(due === 'first' ? { first_alert_at: d.now.toISOString() } : { second_alert_at: d.now.toISOString(), first_alert_at: lead.first_alert_at ?? d.now.toISOString() }).eq('id', lead.id);
       sent++;
     }
   }
   // A new-lead alert that failed at intake gets another try here.
-  const { data: missed } = await d.db.from('leads').select('id, household_id, source').is('new_alert_at', null).eq('is_test', false).gte('received_at', since).limit(50);
+  // Newest first, so a real lead is never stuck behind a backlog. Leads held for the digest are
+  // not retried one by one; the digest below lists them.
+  const { data: missed } = await d.db.from('leads').select('id, household_id, source').is('new_alert_at', null).eq('is_test', false)
+    .is('alert_held', null).gte('received_at', since).order('received_at', { ascending: false }).limit(50);
   for (const lead of missed ?? []) {
     const { data: h } = await d.db.from('v_households').select('display_name, primary_phone, primary_email').eq('id', lead.household_id).single();
-    const r = await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: `New lead: ${h?.display_name ?? ''}`, text: leadAlertText(d.appUrl, d.linkSecret, lead, { name: h?.display_name ?? 'Unknown', phone: h?.primary_phone, email: h?.primary_email }, 'new'), leadId: lead.id, householdId: lead.household_id });
+    const r = await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: `New lead: ${h?.display_name ?? ''}`, text: leadAlertText(d.appUrl, d.linkSecret, lead, { name: h?.display_name ?? 'Unknown', phone: h?.primary_phone, email: h?.primary_email }, 'new'), leadId: lead.id, householdId: lead.household_id }, d.now);
     if (r.ok) { await d.db.from('leads').update({ new_alert_at: d.now.toISOString() }).eq('id', lead.id); sent++; }
+    else if (r.held === 'digest') await d.db.from('leads').update({ alert_held: 'digest' }).eq('id', lead.id);
   }
-  return { ok: true, detail: `${sent} lead alerts sent.` };
+  const digest = await sendLeadDigest(d.db, d.adapter, s, d.appUrl, d.now);
+  sent += digest.sent;
+  return { ok: true, detail: `${sent} lead alerts sent.${digest.waiting ? ` ${digest.waiting} leads wait for the next "Many new leads" list.` : ''}` };
 }
 
 async function dealReminders(d: TickDeps, s: Settings) {

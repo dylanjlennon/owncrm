@@ -5,6 +5,7 @@ import { readLimited, ipBucket, json } from '@/lib/http';
 import { constantTimeEqual } from '@/lib/secure';
 import { takeLead } from '@/lib/leads';
 import { getSettings } from '@/lib/settings';
+import { LEAD_LIMITS } from '@/lib/limits';
 
 // PUBLIC: the web lead form. Own key, honeypot, size limit, rate limit.
 export const dynamic = 'force-dynamic';
@@ -28,10 +29,19 @@ export async function POST(req: Request) {
 
   const db = serviceClient();
   const isTest = constantTimeEqual(req.headers.get('x-owncrm-selftest'), env.cronSecret());
+  // Per address first. A post refused here is not counted against the site-wide limit, so one
+  // address can't use up the hour for everyone else.
+  // Past the site-wide limit, real visitors are not turned away: the lead is saved and held for
+  // the "Many new leads" list, and the owner is told the form is being flooded. Only past a much
+  // higher hard limit (spam from many addresses at once) are posts refused, to protect the database.
+  let formFlood = false;
   if (!isTest) {
-    const okIp = (await db.rpc('hit_rate_limit', { p_bucket: ipBucket(req, 'lead'), p_max: 10, p_window_seconds: 600 })).data;
-    const okAll = (await db.rpc('hit_rate_limit', { p_bucket: 'lead:all', p_max: 60, p_window_seconds: 3600 })).data;
-    if (okIp !== true || okAll !== true) return json({ error: 'Too many requests. Try again later.' }, 429);
+    const hit = async (bucket: string, max: number, secs: number) => (await db.rpc('hit_rate_limit', { p_bucket: bucket, p_max: max, p_window_seconds: secs })).data === true;
+    if (!(await hit(ipBucket(req, 'lead'), LEAD_LIMITS.perIp, 600))) return json({ error: 'Too many requests. Try again later.' }, 429);
+    if (!(await hit('lead:all', LEAD_LIMITS.perHour, 3600))) {
+      if (!(await hit('lead:all:hard', LEAD_LIMITS.hardPerHour, 3600))) return json({ error: 'Too many requests. Try again later.' }, 429);
+      formFlood = true;
+    }
   }
   const first = clean(f.first_name, 100);
   const email = clean(f.email, 320);
@@ -47,6 +57,6 @@ export async function POST(req: Request) {
     // The exact words shown next to the checkbox, read from Settings on the server, not from the browser.
     consent_wording: consented ? settings.form_consent_wording : null,
     is_test: isTest,
-  });
+  }, { formFlood });
   return done();
 }

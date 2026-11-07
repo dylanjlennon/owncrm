@@ -4,8 +4,16 @@ import { parseRealtorLead } from './parsers/realtor';
 import { takeLead } from './leads';
 import { getSettings } from './settings';
 import { sendAlert } from './alerts';
+import { createHash } from 'node:crypto';
 
 const MAX_BODY = 200_000;
+// Forwarded email limits. Past them the email is still saved to Needs review, but it is not
+// turned into a lead and does not send an email of its own.
+export const INBOUND_LIMITS = { perSender: 20, total: 100 };
+const senderBucket = (from: string | null) => {
+  const addr = (from ?? '').match(/[^\s<>"]+@[^\s<>"]+/)?.[0]?.toLowerCase() ?? 'unknown';
+  return `inbound:${createHash('sha256').update(`inbound:${addr}`).digest('hex').slice(0, 24)}`;
+};
 
 // Every inbound email is stored before anything else happens. Parsed ones become leads.
 // Anything we can't read goes to Needs review and alerts the owner. Nothing is dropped.
@@ -21,6 +29,14 @@ export async function processInbound(db: SupabaseClient, adapter: EmailAdapter, 
   if (error) {
     if (error.code === '23505') return { duplicate: true };
     throw new Error(error.message);
+  }
+  // Rate limits: per sender first, so one sender can't use up the hour for everyone.
+  const hit = async (bucket: string, max: number) => (await db.rpc('hit_rate_limit', { p_bucket: bucket, p_max: max, p_window_seconds: 3600 })).data === true;
+  const withinLimits = (await hit(senderBucket(e.from), INBOUND_LIMITS.perSender)) && (await hit('inbound:all', INBOUND_LIMITS.total));
+  if (!withinLimits) {
+    await db.from('inbound_emails').update({ review_reason: 'Saved but not read: too many forwarded emails this hour.' }).eq('id', row.id);
+    await reviewAlert(db, adapter, appUrl, row.id);
+    return { parsed: false, limited: true };
   }
   const bodyForParse = text || html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr)>/gi, '\n').replace(/<[^>]+>/g, ' ');
   const parsed = e.fetchFailed ? { ok: false as const, reason: 'Could not fetch the email body from the provider.' } : parseRealtorLead(e.from, e.subject, bodyForParse);
@@ -38,13 +54,20 @@ export async function processInbound(db: SupabaseClient, adapter: EmailAdapter, 
   } else {
     await db.from('inbound_emails').update({ review_reason: parsed.reason }).eq('id', row.id);
   }
-  const s = await getSettings(db);
-  const r = await sendAlert(db, adapter, s, appUrl, {
-    subject: 'An email needs review',
-    text: `A forwarded email could not be read as a lead. It is saved, nothing was lost.\nFrom: ${e.from ?? 'unknown'}\nSubject: ${e.subject ?? '(none)'}\nOpen Needs review: ${appUrl}/review`,
-  });
-  if (r.ok) await db.from('inbound_emails').update({ alerted_at: new Date().toISOString() }).eq('id', row.id);
+  await reviewAlert(db, adapter, appUrl, row.id);
   return { parsed: false };
+}
+
+// One "needs review" email per 12 hours, with a count, however many emails arrive. Junk sent to
+// the inbound address can't use up the alert allowance this way.
+async function reviewAlert(db: SupabaseClient, adapter: EmailAdapter, appUrl: string, rowId: string) {
+  const s = await getSettings(db);
+  const { count } = await db.from('inbound_emails').select('id', { count: 'exact', head: true }).eq('status', 'needs_review');
+  const r = await sendAlert(db, adapter, s, appUrl, {
+    subject: 'An email needs review', key: 'inbound_review',
+    text: `A forwarded email could not be read as a lead. It is saved, nothing was lost.\n\nEmails waiting in Needs review: ${count ?? 1}.\nOpen Needs review: ${appUrl}/review\n\nYou get this at most once every 12 hours, however many emails arrive.`,
+  });
+  if (r.ok || r.held === 'duplicate') await db.from('inbound_emails').update({ alerted_at: new Date().toISOString() }).eq('id', rowId);
 }
 
 // Delivery events from the email provider. "Delivered" and "Bounced" only appear once these arrive.

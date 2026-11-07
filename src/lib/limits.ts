@@ -6,3 +6,8 @@ export const IMPORT_TOO_BIG = 'Over the 4 MB limit for one upload. Split a sprea
 export function importSizeProblem(totalBytes: number): string | null {
   return totalBytes > IMPORT_MAX_BYTES ? IMPORT_TOO_BIG : null;
 }
+
+// The public lead form. Per address: 10 posts in 10 minutes. Site-wide: 60 an hour before new
+// leads are held for the "Many new leads" list (still saved), and 600 an hour before posts are
+// refused outright to protect the database.
+export const LEAD_LIMITS = { perIp: 10, perHour: 60, hardPerHour: 600 };

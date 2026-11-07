@@ -82,10 +82,12 @@ describe('M2: alert budget with a ceiling and a reserve for new-lead alerts', ()
     const db = world();
     const adapter = new MockAdapter();
     const s = (await db.from('app_settings').select('*').single()).data;
-    for (let i = 0; i < 60; i++) await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `New lead: Spam ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1' });
+    const held: (string | undefined)[] = [];
+    for (let i = 0; i < 60; i++) held.push((await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `New lead: Spam ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1' })).held);
     const leadMail = adapter.sent.length;
-    expect(leadMail).toBeLessThanOrEqual(ALERT_POLICY.leadPerHour + 1);
-    expect(adapter.sent.some((m) => /Many new leads/.test(m.subject))).toBe(true);
+    expect(leadMail).toBeLessThanOrEqual(ALERT_POLICY.leadPerHour);
+    // The rest are held for the "Many new leads" digest (see lead-flood.test.ts), not dropped.
+    expect(held.filter((h) => h === 'digest')).toHaveLength(60 - leadMail);
     const sys = await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: 'Problem: Nightly backup', text: 'x', key: 'check:backup' });
     expect(sys.ok).toBe(true);
   });
@@ -176,12 +178,14 @@ describe('M2: one lead with escalations is not a flood', () => {
     const db = world();
     const adapter = new MockAdapter();
     const s = (await db.from('app_settings').select('*').single()).data;
-    for (let i = 0; i < 6; i++) {
+    // Five leads with every reminder (20 emails) fit in the one-by-one lead share; past it, new
+    // leads go in the digest instead.
+    for (let i = 0; i < 5; i++) {
       for (const subject of ['New lead', 'No reply yet', 'Still no reply']) {
         await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `${subject}: Lead ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', alsoBackup: subject === 'Still no reply' });
       }
     }
     expect(adapter.sent.some((m) => /Many new leads/.test(m.subject))).toBe(false);
-    expect(adapter.sent.filter((m) => m.subject === 'Still no reply: Lead 5').length).toBe(2);
+    expect(adapter.sent.filter((m) => m.subject === 'Still no reply: Lead 4').length).toBe(2);
   });
 });
