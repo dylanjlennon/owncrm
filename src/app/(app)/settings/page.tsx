@@ -17,7 +17,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <h1>Settings</h1>
       <Flash code={sp.msg} />
       <form action={saveSettings} className="stack panel">
-        <h2 style={{ marginTop: 0 }}>You</h2>
+        <h2 className="u-mt0">You</h2>
         <label>Your name or business name (shown as the sender)<input name="display_name" defaultValue={s.display_name ?? ''} maxLength={120} /></label>
         <label>Time zone (used for every due date)<select name="timezone" defaultValue={s.timezone}>{ZONES.map((z) => <option key={z}>{z}</option>)}</select></label>
         <label>Postal address (required by law on marketing email)<input name="postal_address" defaultValue={s.postal_address ?? ''} maxLength={300} /></label>

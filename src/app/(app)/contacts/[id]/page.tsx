@@ -5,8 +5,11 @@ import { CONSENT_LABELS, SOURCE_TYPES, STAGES, NOT_TRANSACTION_FILE } from '@/li
 import { formatDate, formatDateTime } from '@/lib/time';
 import { getSettings } from '@/lib/settings';
 import { Flash } from '@/components/Flash';
-import { addConsent, addDealDate, addFollowUp, addMethod, dealDateDone, logInteraction, markDone, saveDeal, sendEmail, setArchived, updateContact } from '../actions';
+import { addConsent, addDealDate, addFollowUp, addMethod, dealDateDone, logInteraction, saveDeal, sendEmail, setArchived, updateContact } from '../actions';
+import { FollowUpItem } from '@/components/FollowUpItem';
+import { REPEAT_CHOICES } from '@/lib/followups';
 
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const STATUS_TAG: Record<string, string> = { sent: 'Sent (accepted by provider)', delivered: 'Delivered', bounced: 'Bounced', complained: 'Marked as spam', failed: 'Not sent', queued: 'Queued', delayed: 'Delayed' };
 
 export default async function ContactPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> }) {
@@ -27,6 +30,7 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
     db.from('consent_records').select('*').eq('household_id', id).order('recorded_at', { ascending: false }).limit(20),
   ]);
   const emailMethods = (methods ?? []).filter((m: any) => m.kind === 'email');
+  const bday: string | null = (people ?? [])[0]?.birthday ?? null;
   const { data: supp } = emailMethods.length
     ? await db.from('suppressions').select('normalized, reason').eq('kind', 'email').in('normalized', emailMethods.map((m: any) => m.normalized))
     : { data: [] as any[] };
@@ -51,7 +55,7 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
           <dt>Last contact</dt><dd>{formatDate(h.last_contact_on)}</dd>
           <dt>People</dt><dd>{(people ?? []).map((p: any) => `${p.first_name} ${p.last_name ?? ''}${p.do_not_contact ? ' (do not contact)' : ''}`).join(', ')}</dd>
           {(methods ?? []).map((m: any) => (
-            <span key={m.id} style={{ display: 'contents' }}>
+            <span className="u-contents" key={m.id}>
               <dt>{m.kind === 'email' ? 'Email' : 'Phone'}</dt>
               <dd>
                 {m.kind === 'phone' ? <a href={`tel:${m.value.replace(/[^\d+]/g, '')}`}>{m.value}</a> : <a href={`mailto:${m.value}`}>{m.value}</a>}
@@ -61,10 +65,10 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
             </span>
           ))}
         </dl>
-        <form action={addMethod} className="row" style={{ marginTop: 10 }}>
+        <form action={addMethod} className="row u-mt10">
           <input type="hidden" name="id" value={id} />
-          <select name="kind" aria-label="Kind" style={{ width: 'auto' }}><option value="email">Email</option><option value="phone">Phone</option></select>
-          <input name="value" aria-label="Email or phone" maxLength={320} style={{ flex: '1 1 200px', width: 'auto' }} />
+          <select className="u-wauto" name="kind" aria-label="Kind"><option value="email">Email</option><option value="phone">Phone</option></select>
+          <input className="u-w200" name="value" aria-label="Email or phone" maxLength={320} />
           <button className="quiet" type="submit">Add</button>
         </form>
       </section>
@@ -73,16 +77,14 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
         <section>
           <h2>Follow-ups</h2>
           <ul className="list panel">
-            {(tasks ?? []).map((t: any) => (
-              <li key={t.id}><span className="grow">{t.title}<br /><small>Due {formatDate(t.due_on)}</small></span>
-                <form action={markDone} className="inline"><input type="hidden" name="id" value={t.id} /><input type="hidden" name="back" value={`/contacts/${id}`} /><button className="quiet" type="submit">Done</button></form></li>
-            ))}
+            {(tasks ?? []).map((t: any) => <FollowUpItem key={t.id} task={t} back={`/contacts/${id}`} />)}
             {!tasks?.length && <li className="muted">No next step. Add one so this person shows up on Today.</li>}
           </ul>
           <form action={addFollowUp} className="row panel">
             <input type="hidden" name="id" value={id} />
-            <label style={{ flex: '1 1 180px' }}>What<input name="title" maxLength={300} defaultValue="Follow up" /></label>
+            <label className="u-f180">What<input name="title" maxLength={300} defaultValue="Follow up" /></label>
             <label>When<input name="due_on" type="date" required /></label>
+            <label>Repeat<select name="repeat_days" defaultValue=""><option value="">Does not repeat</option>{REPEAT_CHOICES.map((c) => <option key={c.days} value={c.days}>{c.label}</option>)}</select></label>
             <button type="submit">Add follow-up</button>
           </form>
 
@@ -143,7 +145,7 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
                 <input type="hidden" name="sale_price" value={d.sale_price ?? ''} /><input type="hidden" name="gci" value={d.gci ?? ''} />
                 <button className="quiet" type="submit">Save deal</button>
               </form>
-              <h3 style={{ marginTop: 12 }}>Key dates</h3>
+              <h3 className="u-mt12">Key dates</h3>
               <ul className="list">
                 {(d.deal_dates ?? []).sort((a: any, b: any) => a.due_on.localeCompare(b.due_on)).map((dd: any) => (
                   <li key={dd.id}><span className="grow">{dd.label}: {formatDate(dd.due_on)} {dd.done_at && <span className="tag ok">Done</span>}</span>
@@ -152,8 +154,8 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
               </ul>
               <form action={addDealDate} className="row">
                 <input type="hidden" name="household_id" value={id} /><input type="hidden" name="deal_id" value={d.id} />
-                <input name="label" aria-label="Date name" placeholder="Due diligence ends" maxLength={120} style={{ flex: '1 1 160px', width: 'auto' }} />
-                <input type="date" name="due_on" aria-label="Date" style={{ width: 'auto' }} />
+                <input className="u-w160" name="label" aria-label="Date name" placeholder="Due diligence ends" maxLength={120} />
+                <input className="u-wauto" type="date" name="due_on" aria-label="Date" />
                 <button className="quiet" type="submit">Add date</button>
               </form>
             </div>
@@ -194,6 +196,12 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
             <label>Saved stage<select name="stage" defaultValue={h.stored_stage}>{[...STAGES, 'under contract'].map((x) => <option key={x}>{x}</option>)}</select></label>
             <label>Came from<input name="lead_source" defaultValue={h.lead_source ?? ''} maxLength={200} /></label>
             <label>Source type<select name="source_type" defaultValue={h.source_type}><option value="personal">Personal</option><option value="firm_provided">Firm-provided</option><option value="portal">Portal</option><option value="unknown">Not stated</option></select></label>
+            <div className="row">
+              <label>Birthday month<select name="birthday_month" defaultValue={bday ? Number(bday.slice(5, 7)) : ''}><option value="">Not set</option>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></label>
+              <label>Day<input name="birthday_day" type="number" min={1} max={31} defaultValue={bday ? Number(bday.slice(8, 10)) : ''} /></label>
+            </div>
+            <small>Month and day only. The year is never stored, so the CRM never knows anyone&apos;s age.</small>
+            <label>Home anniversary (the day they closed on their home)<input name="home_anniversary" type="date" defaultValue={h.home_anniversary ?? ''} /></label>
             <label>Notes (relationship memory only)<textarea name="notes" defaultValue={h.notes ?? ''} maxLength={10000} /></label>
             <button className="quiet" type="submit">Save details</button>
           </form>

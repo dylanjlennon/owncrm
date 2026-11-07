@@ -1,3 +1,4 @@
+import { IMPORT_TOO_BIG } from './limits';
 // Flash messages come from this fixed list. The URL carries a code, never the words,
 // so a crafted link can't make the app display text of an attacker's choosing.
 const MESSAGES = {
@@ -7,6 +8,9 @@ const MESSAGES = {
   contact_restored: { tone: 'ok', text: 'Contact restored.' },
   followup_added: { tone: 'ok', text: 'Follow-up added.' },
   followup_done: { tone: 'ok', text: 'Follow-up marked done.' },
+  followup_repeated: { tone: 'ok', text: 'Done. The next one is on the list.' },
+  followup_saved: { tone: 'ok', text: 'Follow-up saved.' },
+  followup_snoozed: { tone: 'ok', text: 'Follow-up moved.' },
   note_added: { tone: 'ok', text: 'Added to the timeline.' },
   deal_saved: { tone: 'ok', text: 'Deal saved.' },
   date_added: { tone: 'ok', text: 'Key date added.' },
@@ -28,7 +32,7 @@ const MESSAGES = {
   cleanup_ran: { tone: 'ok', text: 'Cleanup finished.' },
   import_uploaded: { tone: 'ok', text: 'File read. Match the columns below.' },
   import_empty: { tone: 'bad', text: 'That file had no rows we could read.' },
-  import_too_big: { tone: 'bad', text: 'That file is over the 5 MB limit. Split it and try again.' },
+  import_too_big: { tone: 'bad', text: IMPORT_TOO_BIG },
   import_done: { tone: 'ok', text: 'Import finished. Nobody was emailed.' },
   import_undone: { tone: 'ok', text: 'Import undone.' },
   selftest_ok: { tone: 'ok', text: 'Self-test passed.' },

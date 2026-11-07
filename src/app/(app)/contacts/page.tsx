@@ -33,12 +33,12 @@ export default async function Contacts({ searchParams }: { searchParams: Promise
   return (
     <>
       <Flash code={sp.msg} />
-      <div className="row" style={{ justifyContent: 'space-between' }}>
+      <div className="row u-between">
         <h1>Contacts</h1>
         <Link className="button" href="/contacts/new">Add contact</Link>
       </div>
       <form className="row panel" role="search">
-        <label style={{ flex: '1 1 260px' }}>Search by name, email or phone<input name="q" defaultValue={q} maxLength={100} /></label>
+        <label className="u-f260">Search by name, email or phone<input name="q" defaultValue={q} maxLength={100} /></label>
         <label>Stage<select name="stage" defaultValue={stage}><option value="">Any</option>{['new lead','active buyer','active seller','under contract','past client','sphere','nurture','cold lead','do not contact'].map((s) => <option key={s}>{s}</option>)}</select></label>
         <label className="check"><input type="checkbox" name="archived" value="1" defaultChecked={archived} /> Archived</label>
         <button type="submit">Search</button>

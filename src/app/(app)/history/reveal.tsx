@@ -15,7 +15,7 @@ export function NewTokenForm() {
         </div>
       )}
       <form action={action} className="row panel">
-        <label style={{ flex: '1 1 200px' }}>Name<input name="label" defaultValue="My computer" maxLength={80} /></label>
+        <label className="u-f200">Name<input name="label" defaultValue="My computer" maxLength={80} /></label>
         <label>Expires in<select name="days" defaultValue="30"><option value="7">7 days</option><option value="30">30 days</option><option value="90">90 days</option></select></label>
         <button type="submit" disabled={pending}>Create a token</button>
       </form>

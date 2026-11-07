@@ -6,8 +6,9 @@ import { parseCsv } from '@/lib/csv';
 import { IMPORT_FIELDS, splitRows, rowsToContractFiles, errorFile, type Mapping } from '@/lib/importing';
 import { validateContract, errorsCsv, CSV_FILES } from '../../../../contract/lib/validate.mjs';
 import { undoImport as undo } from '@/lib/undo';
+import { IMPORT_MAX_BYTES } from '@/lib/limits';
 
-const MAX = 5 * 1024 * 1024;
+const MAX = IMPORT_MAX_BYTES;
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export async function uploadCsv(f: FormData) {

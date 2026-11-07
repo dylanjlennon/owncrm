@@ -62,7 +62,7 @@ for (const t of ['households', 'leads', 'inbound_emails', 'outbound_emails', 'em
   const { error } = await d0.from(t).delete().not(col, 'is', null);
   if (error) console.log(`cleanup ${t}: ${error.message}`);
 }
-await d0.from('app_settings').update({ first_run_ack_at: null, golive_completed_at: null, test_alert_confirmed_at: null, owner_email: null, backup_email: null, sender_email: null, reply_to: null, postal_address: null, sending_paused: false, sending_paused_reason: null, daily_email_cap: 100, monthly_email_cap: 3000, reserved_alert_budget: 25, history_sync_expected_hours: null, timezone: 'America/New_York', no_reply_first_minutes: 5, no_reply_second_minutes: 15 }).eq('id', true);
+await d0.from('app_settings').update({ first_run_ack_at: null, golive_completed_at: null, test_alert_confirmed_at: null, owner_email: accounts.owner_email, backup_email: 'backup-test@example.org', all_clear_enabled: false, sender_email: null, reply_to: null, postal_address: null, sending_paused: false, sending_paused_reason: null, daily_email_cap: 100, monthly_email_cap: 3000, reserved_alert_budget: 25, history_sync_expected_hours: null, timezone: 'America/New_York', no_reply_first_minutes: 5, no_reply_second_minutes: 15 }).eq('id', true);
 rmSync(MAIL, { force: true }); rmSync(INBOUND, { recursive: true, force: true }); mkdirSync(INBOUND, { recursive: true });
 await seedThroughApi(d0);
 
@@ -71,7 +71,7 @@ try { await fetch(`${APP}/login`); console.error(`Port ${PORT} is already in use
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(PORT)], {
   detached: true,
   env: { ...process.env, SUPABASE_URL: `http://127.0.0.1:${RELAY}`, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: PLACEHOLDER, APP_URL: APP,
-    EMAIL_ADAPTER: 'mock', MOCK_EMAIL_LOG: MAIL, MOCK_INBOUND_DIR: INBOUND, DEMO_MODE: 'true', HEALTHCHECK_PING_URL: `http://127.0.0.1:${RELAY}/__watchdog/ping`, ...secrets },
+    EMAIL_ADAPTER: 'mock', MOCK_EMAIL_LOG: MAIL, LEAD_FORM_FRAME_ANCESTORS: 'https://www.example.com', MOCK_INBOUND_DIR: INBOUND, DEMO_MODE: 'true', HEALTHCHECK_PING_URL: `http://127.0.0.1:${RELAY}/__watchdog/ping`, ...secrets },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let serverLog = ''; server.stdout.on('data', (d) => { serverLog += d; }); server.stderr.on('data', (d) => { serverLog += d; });
@@ -81,6 +81,9 @@ const browser = await playwright.chromium.launch();
 const shots = 'docs/screens'; mkdirSync(shots, { recursive: true });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 2 });
 const page = await ctx.newPage();
+const cspViolations = [];
+ctx.on('page', (p) => p.on('console', (m) => { if (/Content Security Policy|Refused to (apply|load|execute)/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); }));
+page.on('console', (m) => { if (/Content Security Policy|Refused to (apply|load|execute)/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); });
 if (process.env.E2E_DEBUG) page.on('response', (r) => { if (r.status() >= 300) console.log('  ', r.status(), r.request().method(), r.url(), r.headers()['location'] || ''); });
 const shot = async (name, p = page) => { await p.screenshot({ path: `${shots}/${name}.png`, fullPage: false }); };
 const msgAfter = async (selector) => { await Promise.all([page.waitForURL(/msg=/, { timeout: 30000 }), page.click(selector)]); await page.waitForLoadState('load'); return new URL(page.url()).searchParams.get('msg'); };
@@ -118,6 +121,8 @@ try {
   check('real TOTP code in a real browser signs in', /welcome|today/.test(page.url()), page.url());
   const knownDevice = (await db().from('known_devices').select('device_hash')).data ?? [];
   check('new device is recorded at sign-in', knownDevice.length === 1, knownDevice.length);
+  const loginMail = mails().filter((m) => m.subject === 'New sign-in to your CRM');
+  check('a new device emails the owner and the backup contact', loginMail.some((m) => m.to === accounts.owner_email) && loginMail.some((m) => m.to === 'backup-test@example.org') && /wasnt-me\?t=/.test(loginMail[0]?.text || ''), mails().map((m) => m.subject).join(' | '));
 
   // ---- first run ----
   await page.goto(`${APP}/today`);
@@ -152,6 +157,28 @@ try {
   check('contact shows consent, source and source type', cTxt.includes('Unknown') && cTxt.includes('Personal'), cTxt);
   await page.goto(`${APP}/today`);
   check('follow-up due today is on Today', (await page.textContent('body')).includes('Call Fresh about the showing'));
+  // edit and snooze a follow-up, and a birthday on Today
+  await page.goto(freshUrl);
+  await page.click('[data-testid=followup] summary:has-text("Edit")');
+  await page.fill('[data-testid=followup] details input[name=title]', 'Call Fresh about the second showing');
+  const edited = await msgAfter('[data-testid=followup] details button:has-text("Save")');
+  check('a follow-up can be edited', edited === 'followup_saved' && (await page.textContent('body')).includes('Call Fresh about the second showing'), edited);
+  const md = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(Date.now() + 3 * 86400000));
+  await page.selectOption('select[name=birthday_month]', String(Number(md.slice(5, 7))));
+  await page.fill('input[name=birthday_day]', String(Number(md.slice(8, 10))));
+  await msgAfter('button:has-text("Save details")');
+  const { data: bp } = await db().from('people').select('birthday').eq('household_id', freshUrl.split('/').pop()).single();
+  check('a birthday is stored as month and day only (year 2000, no age)', bp.birthday === `2000-${md.slice(5)}`, bp.birthday);
+  await page.goto(`${APP}/today`);
+  check('upcoming birthdays show on Today', (await page.textContent('[data-testid=occasions]').catch(() => '')).includes('Fresh Testcase'));
+  await page.goto(freshUrl);
+  await page.selectOption('[data-testid=followup] select[name=snooze]', '1d');
+  const snoozed = await msgAfter('[data-testid=followup] button:has-text("Snooze")');
+  const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(Date.now() + 86400000));
+  const { data: snoozedTask } = await db().from('tasks').select('due_on').eq('household_id', freshUrl.split('/').pop()).is('done_at', null).single();
+  check('snooze moves a follow-up to tomorrow', snoozed === 'followup_snoozed' && snoozedTask.due_on === tomorrow, JSON.stringify({ snoozed, snoozedTask }));
+  await page.goto(`${APP}/today`);
+  check('a snoozed follow-up leaves Today', !(await page.textContent('body')).includes('Call Fresh about the second showing'));
   await page.goto(`${APP}/contacts?q=testcase`);
   check('search by name finds it', (await page.textContent('table')).includes('Fresh Testcase'));
   await page.goto(`${APP}/contacts?q=${encodeURIComponent('555-0177')}`);
@@ -198,12 +225,14 @@ try {
   const { count: botCount } = await db().from('people').select('id', { count: 'exact', head: true }).eq('first_name', 'Bot');
   check('honeypot: bot submission pretends to work and stores nothing', honey.status === 303 && botCount === 0, `${honey.status} ${botCount}`);
   check('wrong form key is refused', (await fetch(`${APP}/api/lead`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'key=wrong&first_name=A&email=a@example.com' })).status === 404);
+  const formHead = Object.fromEntries((await fetch(`${APP}/lead/${secrets.LEAD_FORM_KEY}`)).headers);
+  check('the lead form can be framed only by the listed site', !formHead['x-frame-options'] && /frame-ancestors https:\/\/www\.example\.com;/.test(formHead['content-security-policy']), JSON.stringify(formHead));
   check('oversized form post is refused', (await fetch(`${APP}/api/lead`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'x='.padEnd(20000, 'a') })).status === 413);
 
   // no-reply: pretend the lead came in 6 minutes ago, run the scheduler
   await db().from('leads').update({ received_at: new Date(Date.now() - 6 * 60000).toISOString() }).eq('id', formLead.id);
   const tick1 = await cron();
-  check('scheduler runs with its secret', tick1.status === 200 || tick1.status === 500, tick1.status);
+  check('scheduler runs with its secret', tick1.status === 200, `${tick1.status} ${await tick1.text().catch(() => '')}`);
   check('scheduler refuses without its secret', (await fetch(`${APP}/api/cron/tick`)).status === 401);
   const noReply = mails().find((m) => m.subject.startsWith('No reply yet') && m.text.includes(`formula.lead.${RUN}@example.com`));
   check('first no-reply alert follows on schedule', !!noReply, mails().map((m) => m.subject).join(' | '));
@@ -214,6 +243,8 @@ try {
   await rp.click('button:has-text("Yes, I replied")');
   await rp.waitForURL(/\/r\/done\?code=replied/);
   check('"I replied" stops the reminders', (await db().from('leads').select('replied_at, replied_via').eq('id', formLead.id).single()).data.replied_via === 'link');
+  await rp.goto(link); await rp.click('button:has-text("Yes, I replied")'); await rp.waitForURL(/\/r\/done\?code=/);
+  check('an "I replied" link works only once', rp.url().includes('code=link_used'), rp.url());
   await db().from('leads').update({ received_at: new Date(Date.now() - 20 * 60000).toISOString() }).eq('id', formLead.id);
   await cron();
   check('no second alert after "I replied"', !mails().some((m) => m.subject.startsWith('Still no reply') && m.text.includes(`formula.lead.${RUN}@example.com`)));
@@ -363,10 +394,25 @@ try {
   check('red banner on every screen when the scheduler stops', (await page.getAttribute('[data-testid=health-strip]', 'class')).includes('bad') && (await page.textContent('[data-testid=health-strip]')).includes('Scheduled job'));
   await shot('10-red-banner');
   await cron();
-  // ---- budget: batch or client mail can't use the alert reserve ----
-  await db().from('app_settings').update({ daily_email_cap: 10, reserved_alert_budget: 9 }).eq('id', true);
-  await page.goto(freshUrl.replace(/\/contacts\/.*/, `/contacts/${optedIn.id}`));
+  // ---- budget: client mail can't use the alert reserve, and alerts still go out ----
+  const { data: usage } = await db().from('v_email_usage').select('sent_today').single();
+  await db().from('app_settings').update({ daily_email_cap: usage.sent_today + 26, reserved_alert_budget: 25 }).eq('id', true);
+  for (let i = 0; i < 2; i++) {
+    await page.goto(`${APP}/contacts/${optedIn.id}`);
+    await page.fill('input[name=subject]', `Budget check ${i}`); await page.fill('textarea[name=body]', 'Hello');
+    await msgAfter('button:has-text("Send")');
+  }
+  await page.goto(`${APP}/contacts/${optedIn.id}`);
+  await page.fill('input[name=subject]', 'Over budget'); await page.fill('textarea[name=body]', 'Hello');
+  const overBudget = await msgAfter('button:has-text("Send")');
+  check('client mail stops at the daily limit minus the alert reserve', overBudget === 'email_blocked_budget' && !mails().some((m) => m.subject === 'Over budget'), overBudget);
+  await page.goto(`${APP}/status`);
+  const alertCode = await msgAfter('button:has-text("Send a test alert")');
+  check('an alert still goes out when client mail is blocked', alertCode === 'test_alert_sent' && mails().filter((m) => m.subject === 'Test alert from your CRM').length === 2, alertCode);
+  check('status says plainly that the deploy date is not an update check', (await page.textContent('[data-testid=check-deploy]')).includes('does not prove'));
   await db().from('app_settings').update({ daily_email_cap: 100, reserved_alert_budget: 25 }).eq('id', true);
+  const failedCheckMail = mails().filter((m) => m.subject === 'Problem: Logged-out read test');
+  check('a failing check emails once, not on every scheduler run', failedCheckMail.length <= 2, failedCheckMail.length);
 
   // ---- Connect your history, rescue upload, review, undo ----
   await page.goto(`${APP}/history`);
@@ -452,6 +498,8 @@ try {
   }
   const lf = await phone.newPage(); await lf.goto(`${APP}/lead/${secrets.LEAD_FORM_KEY}`); await lf.screenshot({ path: `${shots}/phone-lead-form.png` });
   await phone.close();
+
+  check('no page broke the content security policy', cspViolations.length === 0, cspViolations.slice(0, 3).join(' | '));
 
   // ---- wasn't me: ends sessions through the database (service-only, so via the relay this is refused) ----
   await page.goto(`${APP}/settings`);

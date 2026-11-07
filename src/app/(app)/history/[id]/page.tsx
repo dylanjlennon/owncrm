@@ -34,7 +34,7 @@ export default async function BatchPage({ params, searchParams }: { params: Prom
                 <td><input type="checkbox" name="approve" value={h.household_id} aria-label={`Approve ${h.display_name}`} defaultChecked={approved.has(h.household_id)} disabled={b.status !== 'pending_review'} /></td>
                 <td><strong>{h.display_name}</strong><br /><small>{methods(h.household_id)}</small><br /><small>{h.first_contact_on || '?'} to {h.last_contact_on || '?'}</small></td>
                 <td><span className="tag">{h.stage}</span><br /><small>{h.suggested_next_step || 'No next step suggested'}</small><br /><small className="muted">{h.summary}</small></td>
-                <td><small>{h.why || 'No reason given'}</small><ul style={{ margin: 0, paddingLeft: 18 }}>{evidence(h.household_id).map((e: any, i: number) => <li key={i}><small>{e.source}, {e.evidence_type}{e.message_count ? `, ${e.message_count} ${e.message_count === '1' ? 'item' : 'items'}` : ''}</small></li>)}</ul></td>
+                <td><small>{h.why || 'No reason given'}</small><ul className="u-m0pl18">{evidence(h.household_id).map((e: any, i: number) => <li key={i}><small>{e.source}, {e.evidence_type}{e.message_count ? `, ${e.message_count} ${e.message_count === '1' ? 'item' : 'items'}` : ''}</small></li>)}</ul></td>
               </tr>
             ))}
           </tbody>

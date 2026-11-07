@@ -197,3 +197,11 @@ drop table if exists public.app_secrets;
 -- ---------------------------------------------------------------- follow-ups that repeat
 alter table public.tasks add column if not exists repeat_days int
   check (repeat_days is null or repeat_days in (7, 14, 30, 90, 180, 365));
+
+-- Today's follow-ups also say whether they repeat. New column at the end, so the view can be replaced.
+create or replace view public.v_today_followups with (security_invoker = true) as
+select t.id, t.household_id, t.title, t.due_on, h.display_name, h.primary_phone, h.primary_email,
+       (t.due_on < public.local_today()) as overdue, t.repeat_days
+from public.tasks t join public.v_households h on h.id = t.household_id
+where t.done_at is null and t.due_on <= public.local_today() and h.archived_at is null and not h.is_test
+order by t.due_on, t.created_at;

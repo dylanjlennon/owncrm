@@ -33,8 +33,8 @@ export default async function HistoryPage({ searchParams }: { searchParams: Prom
           const st: any = bySource.get(c.key);
           return (
             <article key={c.key} className="card" data-testid={`source-${c.key}`}>
-              <div className="row" style={{ justifyContent: 'space-between' }}><h3>{c.title}</h3><span className={`tag ${c.verdict === 'Can' ? 'ok' : c.verdict === 'Later' ? 'warn' : 'bad'}`}>{c.verdict}</span></div>
-              <p className="muted" style={{ margin: 0 }}>{c.route}</p>
+              <div className="row u-between"><h3>{c.title}</h3><span className={`tag ${c.verdict === 'Can' ? 'ok' : c.verdict === 'Later' ? 'warn' : 'bad'}`}>{c.verdict}</span></div>
+              <p className="muted u-m0">{c.route}</p>
               <dl>
                 <dt>What it reads</dt><dd>{c.reads}</dd>
                 <dt>What never leaves your computer</dt><dd>{c.staysLocal}</dd>
