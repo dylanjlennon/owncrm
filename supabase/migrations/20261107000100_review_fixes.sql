@@ -104,7 +104,6 @@ end $$;
 -- 40 a day held for alerts (was 25), so a busy day of leads with escalations still fits.
 -- On Resend's free plan (100 a day) that leaves 60 for one-to-one client email.
 alter table public.app_settings alter column reserved_alert_budget set default 40;
-update public.app_settings set reserved_alert_budget = 40 where id and reserved_alert_budget = 25 and golive_completed_at is null;
 
 create or replace function private.outbound_guard() returns trigger
 language plpgsql set search_path = '' as $$
@@ -192,7 +191,14 @@ end $$;
 
 -- ---------------------------------------------------------------- blue #2: daily all-clear on by default
 alter table public.app_settings alter column all_clear_enabled set default true;
+
+-- One-time settings changes for installs that have not gone live yet. The audit trigger is off for
+-- these two lines only: a migration is not an owner action, and an audit row written here would
+-- collide with the restored audit_log when RESTORE.md replays migrations on a blank project.
+alter table public.app_settings disable trigger audit_settings;
+update public.app_settings set reserved_alert_budget = 40 where id and reserved_alert_budget = 25 and golive_completed_at is null;
 update public.app_settings set all_clear_enabled = true where id and golive_completed_at is null;
+alter table public.app_settings enable trigger audit_settings;
 
 -- ---------------------------------------------------------------- L2: no AI key storage
 -- The optional AI key setting was never used. It is gone, with its encrypted column.
