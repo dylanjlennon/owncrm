@@ -28,7 +28,8 @@ for f in supabase/migrations/*.sql; do case "$(basename "$f")" in 20261107*) con
 lpsql -d oldsrc -c "insert into public.households (display_name) values ('Testy McExample'), ('Sample Example')" \
   -c "insert into public.app_secrets (name, ciphertext) values ('ai_api_key', 'fake-ciphertext-for-test')" \
   -c "insert into public.people (household_id, first_name, birthday) select id, 'Testy', '1961-04-02' from public.households where display_name = 'Testy McExample'" \
-  -c "update public.app_settings set daily_email_cap = 10 where id" >/dev/null
+  -c "update public.app_settings set daily_email_cap = 10 where id" \
+  -c "insert into public.imports (kind, filename, status, raw_csv, error_csv, total_rows) values ('csv', 'old.csv', 'done', E'name,notes\\nTesty,SSN 123-45-6789', E'line,problem,name,notes\\n2,refused,Testy,SSN 123-45-6789 starting chemo', 1)" >/dev/null
 SUPABASE_DB_URL="$URL/oldsrc" BACKUP_AGE_RECIPIENT="$RECIP" BACKUP_DIR="$WORK/old" node scripts/backup.mjs >/dev/null
 grep -q '"app_secrets"' "$WORK/old/manifest-latest.json" || { echo "FAIL: the old backup should list app_secrets"; exit 1; }
 lpsql -d dst_old -f supabase/tests/auth-shim.sql >/dev/null
@@ -38,6 +39,9 @@ TARGET_DB_URL="$URL/dst_old" AGE_IDENTITY_FILE="$WORK/key.txt" bash scripts/rest
 grep -q 'skipped  app_secrets' "$WORK/old.log" || { echo "FAIL: the skipped table was not reported"; exit 1; }
 [ "$(lpsql -d dst_old -Atc "select birthday from public.people where first_name = 'Testy'")" = "2000-04-02" ] || { echo "FAIL: an old birthday kept its year"; exit 1; }
 [ "$(lpsql -d dst_old -Atc "select count(*) from pg_constraint where conname in ('people_birthday_month_day_only','app_settings_caps_above_alert_reserve')")" = "2" ] || { echo "FAIL: restore did not put the checks back"; exit 1; }
+[ "$(lpsql -d dst_old -Atc "select count(*) from public.imports where raw_csv is not null or error_csv is not null")" = "0" ] || { echo "FAIL: an old backup brought back a stored upload or refused rows"; exit 1; }
+grep -q 'Cleared the stored upload or old error file on 1 imports' "$WORK/old.log" || { echo "FAIL: the cleared imports were not reported"; exit 1; }
+[ "$(lpsql -d dst_old -Atc "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")" = "10/5" ] || { echo "FAIL: restore changed the cap instead of the alert reserve"; exit 1; }
 echo "A backup from before the upgrade restores onto the new schema: ok"
 rm -rf "$WORK"
 echo "RESTORE TEST: passed"
