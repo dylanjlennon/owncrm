@@ -1,6 +1,7 @@
 // A tiny in-memory stand-in for the Supabase client, enough for the scheduler, alerts and
 // go-live logic. Test use only. It is not a database: no RLS, no constraints beyond the hooks.
 import { randomUUID } from 'node:crypto';
+import { ALERT_POLICY, dayStart } from '@/lib/alerts';
 
 type Row = Record<string, any>;
 type Filter = (r: Row) => boolean;
@@ -12,6 +13,8 @@ export function fakeDb(init: {
   rpc?: Record<string, (args: any, t: Record<string, Row[]>) => any>;
   beforeInsert?: Record<string, (row: Row, t: Record<string, Row[]>) => void>;
   defaults?: Record<string, () => Row>;
+  /** The time the fake database thinks it is (ms). Default: the real clock. */
+  clock?: () => number;
 } = {}) {
   const tables: Record<string, Row[]> = { ...(init.tables ?? {}) };
   let seq = 1;
@@ -106,7 +109,7 @@ export function fakeDb(init: {
     tables,
     from: (name: string) => query(name),
     rpc: async (name: string, args?: any) => {
-      const fn = init.rpc?.[name];
+      const fn = init.rpc?.[name] ?? (name === 'alert_admit' ? (a: any, t: Record<string, Row[]>) => alertAdmit(a, t, init.clock?.() ?? Date.now()) : undefined);
       if (!fn) return { data: null, error: { message: `no rpc ${name}` } };
       try { return { data: await fn(args, tables), error: null }; } catch (e: any) { return { data: null, error: { message: e.message } }; }
     },
@@ -127,4 +130,57 @@ export function jobStatusView(t: Record<string, Row[]>) {
       last_detail: mine[0]?.detail ?? null,
     };
   });
+}
+
+/**
+ * A stand-in for public.alert_admit (migration 20261107000300_alert_gate.sql), so unit tests can
+ * run the app's alert paths without Postgres. It runs synchronously, which is what the database
+ * lock gives the real function. scripts/test-db-local.sh tests the real function, including 40
+ * calls at once. Keep the two in step.
+ */
+export function alertAdmit(a: any, t: Record<string, Row[]>, now: number) {
+  const s: any = (t.app_settings ?? [])[0] ?? {};
+  const outbound = (t.outbound_emails ??= []);
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const live = outbound.filter((r) => r.status !== 'failed');
+  const start = dayStart(new Date(now), s.timezone || 'UTC');
+  const to = [...new Set((a.p_to as string[]).filter((x) => x && x.trim()))];
+  if (!to.length) return { send: false, reason: 'no_owner' };
+  if (a.p_key && live.some((r) => r.alert_key === a.p_key && r.created_at >= iso(now - Number(a.p_dedupe_hours ?? 12) * 3600000))) return { send: false, reason: 'duplicate' };
+  if (a.p_key && a.p_daily_max != null) {
+    const prefix = `${String(a.p_key).split(':')[0]}:`;
+    if (new Set(live.filter((r) => r.created_at >= start && String(r.alert_key ?? '').startsWith(prefix)).map((r) => r.alert_key)).size >= a.p_daily_max) return { send: false, reason: 'daily_max' };
+  }
+  const today = live.filter((r) => (r.kind === 'alert' || r.kind === 'system') && r.created_at >= start);
+  const isLead = (r: Row) => ['lead', 'digest'].includes(r.alert_class ?? (r.lead_id || String(r.subject).startsWith('Many new leads') ? 'lead' : 'system'));
+  const total = today.length; const lead = today.filter(isLead).length; const system = total - lead;
+  const criticalUsed = today.filter((r) => r.alert_class === 'critical').length;
+  const c = { ceiling: ALERT_POLICY.ceiling(s), leadShare: ALERT_POLICY.leadShare(s), systemShare: ALERT_POLICY.systemShare(s), digest: ALERT_POLICY.digestReserve(s), critical: ALERT_POLICY.criticalReserve(s) };
+  const n = to.length; const cls = a.p_class as string;
+  const free = c.ceiling - Math.max(0, c.critical - criticalUsed) - total;
+  const refuse = () => ({ send: false, reason: cls === 'lead' ? 'hold' : 'ceiling' });
+  if (total + n > c.ceiling) return refuse();
+  let room: number;
+  if (cls === 'critical') room = c.systemShare - system;
+  else if (cls === 'system') room = Math.min(c.systemShare - c.critical - system, free);
+  else if (cls === 'digest') {
+    room = Math.min(c.leadShare - lead, free);
+    const last = today.filter((r) => r.alert_class === 'digest').map((r) => r.created_at).sort().at(-1);
+    const hours = Math.max(1, (Date.parse(start) + 86400000 - now) / 3600000 / Math.max(1, c.leadShare - lead));
+    if (last && now - Date.parse(last) < hours * 3600000 - 60000) return { send: false, reason: 'paced', hours };
+  } else {
+    room = Math.min(c.leadShare - c.digest - lead, free);
+    const dayAgo = iso(now - 86400000);
+    if (a.p_flood_key && cls === 'lead' && new Set(live.filter((r) => r.flood_key === a.p_flood_key && r.alert_class === 'lead' && r.created_at >= dayAgo && r.lead_id !== a.p_lead_id).map((r) => r.lead_id)).size >= ALERT_POLICY.perAddressDay) return { send: false, reason: 'hold' };
+    if (a.p_flood_key && cls === 'lead_reminder' && (t.leads ?? []).filter((l) => l.flood_key === a.p_flood_key && l.received_at >= dayAgo).length > ALERT_POLICY.perAddressDay) return { send: false, reason: 'flooded' };
+  }
+  if (room < n) return refuse();
+  const emails = to.map((addr) => {
+    const row = { id: randomUUID(), to_address: addr, subject: String(a.p_subject).slice(0, 300), body_text: a.p_body, kind: 'alert', status: 'queued',
+      lead_id: a.p_lead_id ?? null, household_id: a.p_household_id ?? null, alert_class: cls === 'lead_reminder' ? 'lead' : cls, alert_key: a.p_key ?? null,
+      flood_key: a.p_flood_key ?? null, created_at: iso(now) };
+    outbound.push(row);
+    return { id: row.id, to: addr };
+  });
+  return { send: true, emails };
 }

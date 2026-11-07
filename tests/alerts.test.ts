@@ -78,18 +78,25 @@ describe('M2: alert budget with a ceiling and a reserve for new-lead alerts', ()
     for (let i = 0; i < 5; i++) await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: 'Problem: Nightly backup', text: 'x', key: 'check:backup' });
     expect(adapter.sent.length).toBe(1);
   });
-  it('a public form flood is collapsed, and a system alert still gets through after it', async () => {
+  it('one address flooding the form is collapsed, and a system alert still gets through after it', async () => {
     const db = world();
     const adapter = new MockAdapter();
     const s = (await db.from('app_settings').select('*').single()).data;
     const held: (string | undefined)[] = [];
-    for (let i = 0; i < 60; i++) held.push((await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `New lead: Spam ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1' })).held);
+    for (let i = 0; i < 60; i++) held.push((await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `New lead: Spam ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', floodKey: 'lead:spam' })).held);
     const leadMail = adapter.sent.length;
-    expect(leadMail).toBeLessThanOrEqual(ALERT_POLICY.leadPerHour);
-    // The rest are held for the "Many new leads" digest (see lead-flood.test.ts), not dropped.
+    expect(leadMail).toBe(ALERT_POLICY.perAddressDay);
+    // The rest are held for the "Many new leads" list (see lead-flood.test.ts), not dropped.
     expect(held.filter((h) => h === 'digest')).toHaveLength(60 - leadMail);
     const sys = await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: 'Problem: Nightly backup', text: 'x', key: 'check:backup' });
     expect(sys.ok).toBe(true);
+  });
+  it('many addresses at once stop at the one-by-one lead share, short of the lead list reserve', async () => {
+    const db = world();
+    const adapter = new MockAdapter();
+    const s = (await db.from('app_settings').select('*').single()).data;
+    for (let i = 0; i < 60; i++) await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `New lead: Spam ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', floodKey: `lead:addr${i}` });
+    expect(adapter.sent.length).toBe(ALERT_POLICY.leadShare(s) - ALERT_POLICY.digestReserve(s));
   });
 });
 
@@ -183,8 +190,8 @@ describe('M2: one lead with escalations is not a flood', () => {
     // Five leads with every reminder (20 emails) fit in the one-by-one lead share; past it, new
     // leads go in the digest instead.
     for (let i = 0; i < 5; i++) {
-      for (const subject of ['New lead', 'No reply yet', 'Still no reply']) {
-        await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `${subject}: Lead ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', alsoBackup: subject === 'Still no reply' });
+      for (const [subject, key] of [['New lead', undefined], ['No reply yet', `lead:first:l${i}`], ['Still no reply', `lead:second:l${i}`]] as const) {
+        await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `${subject}: Lead ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', alsoBackup: subject === 'Still no reply', reminder: !!key, key });
       }
     }
     expect(adapter.sent.some((m) => /Many new leads/.test(m.subject))).toBe(false);

@@ -19,7 +19,7 @@ export type TickDeps = {
 
 async function noReplyAlerts(d: TickDeps, s: Settings) {
   const since = new Date(d.now.getTime() - 3 * 86400000).toISOString();
-  const { data: leads } = await d.db.from('leads').select('id, household_id, source, received_at, first_alert_at, second_alert_at, replied_at, message')
+  const { data: leads } = await d.db.from('leads').select('id, household_id, source, received_at, first_alert_at, second_alert_at, replied_at, message, flood_key')
     .is('replied_at', null).eq('is_test', false).is('alert_held', null).gte('received_at', since)
     .order('received_at', { ascending: false }).limit(200);
   let sent = 0;
@@ -31,7 +31,11 @@ async function noReplyAlerts(d: TickDeps, s: Settings) {
       subject: `${due === 'first' ? 'No reply yet' : 'Still no reply'}: ${h?.display_name ?? 'new lead'}`,
       text: leadAlertText(d.appUrl, d.linkSecret, lead, { name: h?.display_name ?? 'Unknown', phone: h?.primary_phone, email: h?.primary_email, message: lead.message }, due),
       alsoBackup: due === 'second', leadId: lead.id, householdId: lead.household_id,
-    }, d.now);
+      reminder: true, key: `lead:${due}:${lead.id}`, floodKey: lead.flood_key ?? null,
+    });
+    // A lead from an address that sent many posts gets no reminders (the database said so).
+    // Mark it, so it isn't asked about again every few minutes.
+    if (r.held === 'flooded') await d.db.from('leads').update({ alert_held: 'digest' }).eq('id', lead.id);
     if (r.ok) {
       await d.db.from('leads').update(due === 'first' ? { first_alert_at: d.now.toISOString() } : { second_alert_at: d.now.toISOString(), first_alert_at: lead.first_alert_at ?? d.now.toISOString() }).eq('id', lead.id);
       sent++;
@@ -40,11 +44,11 @@ async function noReplyAlerts(d: TickDeps, s: Settings) {
   // A new-lead alert that failed at intake gets another try here.
   // Newest first, so a real lead is never stuck behind a backlog. Leads held for the digest are
   // not retried one by one; the digest below lists them.
-  const { data: missed } = await d.db.from('leads').select('id, household_id, source').is('new_alert_at', null).eq('is_test', false)
+  const { data: missed } = await d.db.from('leads').select('id, household_id, source, flood_key').is('new_alert_at', null).eq('is_test', false)
     .is('alert_held', null).gte('received_at', since).order('received_at', { ascending: false }).limit(50);
   for (const lead of missed ?? []) {
     const { data: h } = await d.db.from('v_households').select('display_name, primary_phone, primary_email').eq('id', lead.household_id).single();
-    const r = await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: `New lead: ${h?.display_name ?? ''}`, text: leadAlertText(d.appUrl, d.linkSecret, lead, { name: h?.display_name ?? 'Unknown', phone: h?.primary_phone, email: h?.primary_email }, 'new'), leadId: lead.id, householdId: lead.household_id }, d.now);
+    const r = await sendAlert(d.db, d.adapter, s, d.appUrl, { subject: `New lead: ${h?.display_name ?? ''}`, text: leadAlertText(d.appUrl, d.linkSecret, lead, { name: h?.display_name ?? 'Unknown', phone: h?.primary_phone, email: h?.primary_email }, 'new'), leadId: lead.id, householdId: lead.household_id, floodKey: lead.flood_key ?? null });
     if (r.ok) { await d.db.from('leads').update({ new_alert_at: d.now.toISOString() }).eq('id', lead.id); sent++; }
     else if (r.held === 'digest') await d.db.from('leads').update({ alert_held: 'digest' }).eq('id', lead.id);
   }
@@ -118,7 +122,7 @@ async function alertFailingChecks(d: TickDeps, s: Settings, checks: Check[]) {
     const r = await sendAlert(d.db, d.adapter, s, d.appUrl, {
       subject: `Problem: ${c.label}`, key: `check:${c.key}`, alsoBackup: ESCALATE.has(c.key),
       text: `${c.label} is red.\n\nWhat it says: ${c.detail}\nWhat to do: ${CHECK_FIX[c.key] ?? 'Open Status for details.'}\n\nOpen Status: ${d.appUrl}/status\n\nYou get this once every 12 hours while it stays red.`,
-    }, d.now);
+    });
     sent += r.sent;
   }
   return sent;
@@ -187,7 +191,7 @@ export async function runTick(d: TickDeps) {
           text: problems.length
             ? `These need attention:\n- ${problems.join('\n- ')}\n\n${facts}\n\nOpen Status: ${d.appUrl}/status`
             : `Every check on Status is working.\n\n${facts}\n\nIf this email ever does not arrive by ${s.all_clear_local_hour}:15, something is wrong. Open Status: ${d.appUrl}/status`,
-        }, d.now);
+        });
         return { ok: r.ok, detail: r.ok ? 'Daily all-clear sent.' : 'Could not send the daily all-clear.' };
       });
     }

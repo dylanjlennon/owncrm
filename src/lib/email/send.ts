@@ -42,7 +42,19 @@ export async function queueAndSend(db: SupabaseClient, adapter: EmailAdapter, in
     to_address: input.to, subject: input.subject.slice(0, 300), body_text: body, kind: input.kind,
   }).select('id').single();
   if (error || !data) return { ok: false, code: blockCode(error?.message), error: error?.message };
+  return deliver(db, adapter, { id: data.id, to: input.to, subject: input.subject, body, headers }, ctx);
+}
 
+// Hands one email row the database already accepted to the provider, and records the outcome.
+// Alerts get their rows from public.alert_admit (see src/lib/alerts.ts); everything else from
+// queueAndSend above.
+export async function deliver(db: SupabaseClient, adapter: EmailAdapter,
+  row: { id: string; to: string; subject: string; body: string; headers?: Record<string, string> }, ctx: SendContext):
+  Promise<{ ok: true; id: string } | { ok: false; code: MessageCode; id?: string; error?: string }> {
+  const data = { id: row.id };
+  const input = { to: row.to, subject: row.subject };
+  const body = row.body;
+  const headers = row.headers ?? {};
   const from = ctx.settings.sender_email
     ? `${(ctx.settings.display_name || 'CRM').replace(/[<>"\r\n]/g, '')} <${ctx.settings.sender_email}>` : '';
   if (!from) {

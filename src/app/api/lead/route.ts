@@ -31,13 +31,16 @@ export async function POST(req: Request) {
   const isTest = constantTimeEqual(req.headers.get('x-owncrm-selftest'), env.cronSecret());
   // Per address first. A post refused here is not counted against the site-wide limit, so one
   // address can't use up the hour for everyone else.
-  // Past the site-wide limit, real visitors are not turned away: the lead is saved and held for
-  // the "Many new leads" list, and the owner is told the form is being flooded. Only past a much
+  // Past the site-wide limit, real visitors are not turned away: the lead is saved, goes through
+  // the same per-address alert rule as always, and the owner is told the form is being flooded. Only past a much
   // higher hard limit (spam from many addresses at once) are posts refused, to protect the database.
   let formFlood = false;
+  // The sender's address, hashed. Also the "flood key": one address gets one-by-one alerts for
+  // a few leads a day, then its leads go in the "Many new leads" list (src/lib/alerts.ts).
+  const address = ipBucket(req, 'lead');
   if (!isTest) {
     const hit = async (bucket: string, max: number, secs: number) => (await db.rpc('hit_rate_limit', { p_bucket: bucket, p_max: max, p_window_seconds: secs })).data === true;
-    if (!(await hit(ipBucket(req, 'lead'), LEAD_LIMITS.perIp, 600))) return json({ error: 'Too many requests. Try again later.' }, 429);
+    if (!(await hit(address, LEAD_LIMITS.perIp, 600))) return json({ error: 'Too many requests. Try again later.' }, 429);
     if (!(await hit('lead:all', LEAD_LIMITS.perHour, 3600))) {
       if (!(await hit('lead:all:hard', LEAD_LIMITS.hardPerHour, 3600))) return json({ error: 'Too many requests. Try again later.' }, 429);
       formFlood = true;
@@ -57,6 +60,6 @@ export async function POST(req: Request) {
     // The exact words shown next to the checkbox, read from Settings on the server, not from the browser.
     consent_wording: consented ? settings.form_consent_wording : null,
     is_test: isTest,
-  }, { formFlood });
+  }, { formFlood, floodKey: isTest ? null : address });
   return done();
 }

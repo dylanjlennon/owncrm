@@ -78,6 +78,9 @@ begin
       jsonb_build_object('name','non-owner gets no local date','as','nonowner','sql','select coalesce(public.local_today()::text, ''none'')','expect','value:none'),
       jsonb_build_object('name','owner gets the local date','as','owner','sql','select (public.local_today() is not null)::text','expect','value:true'),
       jsonb_build_object('name','non-owner cannot run cleanup','as','nonowner','sql','select public.run_hygiene()','expect','raises:not_owner'),
+      jsonb_build_object('name','anon cannot ask for an alert','as','anon','sql','select public.alert_admit(''system'', array[''owner@example.com''], ''s'', ''b'')','expect','raises'),
+      jsonb_build_object('name','non-owner cannot ask for an alert','as','nonowner','sql','select public.alert_admit(''system'', array[''owner@example.com''], ''s'', ''b'')','expect','raises:not_owner'),
+      jsonb_build_object('name','the alert decision takes the send lock','as','service','sql','select (pg_get_functiondef(''public.alert_admit''::regproc) like ''%pg_advisory_xact_lock(7314001)%'')::text','expect','value:true'),
       jsonb_build_object('name','owner without aal2 cannot run cleanup','as','owner_aal1','sql','select public.run_hygiene()','expect','raises:not_owner'),
       jsonb_build_object('name','non-owner cannot use the rate limiter','as','nonowner','sql','select public.hit_rate_limit(''x'', 5, 60)','expect','raises:not_owner'),
       jsonb_build_object('name','service key uses the rate limiter','as','service','sql','select public.hit_rate_limit(''rls-x'', 5, 60)::text','expect','value:true'),
@@ -120,7 +123,8 @@ begin
       -- Reserved alert budget.
       jsonb_build_object('name','set a tiny email budget','as','owner','sql','update public.app_settings set daily_email_cap = 3, reserved_alert_budget = 2 returning 1','expect','positive'),
       jsonb_build_object('name','client mail cannot eat the alert budget','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'')','expect','raises:blocked_budget'),
-      jsonb_build_object('name','alerts can still use the reserve','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'') returning 1','expect','positive'),
+      jsonb_build_object('name','the last alert of the day is held for escalations','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'') returning 1','expect','raises:blocked_alert_budget'),
+      jsonb_build_object('name','alerts can still use the reserve','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind,alert_class) values (''owner@example.com'',''s'',''b'',''alert'',''critical'') returning 1','expect','positive'),
       -- M2: alerts have a hard daily ceiling (reserved_alert_budget = 2, and two alerts went today).
       jsonb_build_object('name','alerts stop at the daily alert ceiling','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'')','expect','raises:blocked_alert_budget'),
       -- N6: alerts no longer count against client email (cap 4, reserve 2: two client emails a day).
