@@ -102,7 +102,8 @@ end $$;
 
 -- ---------------------------------------------------------------- M2: alert ceiling in the send gate
 -- 40 a day held for alerts (was 25), so a busy day of leads with escalations still fits.
--- On Resend's free plan (100 a day) that leaves 60 for one-to-one client email.
+-- On Resend's free plan (100 a day) that leaves 60 for client email (enforced from
+-- 20261107000200_review_fixes_2.sql on, where alerts stop counting against client email).
 alter table public.app_settings alter column reserved_alert_budget set default 40;
 
 create or replace function private.outbound_guard() returns trigger
@@ -195,10 +196,14 @@ alter table public.app_settings alter column all_clear_enabled set default true;
 -- One-time settings changes for installs that have not gone live yet. The audit trigger is off for
 -- these two lines only: a migration is not an owner action, and an audit row written here would
 -- collide with the restored audit_log when RESTORE.md replays migrations on a blank project.
-alter table public.app_settings disable trigger audit_settings;
-update public.app_settings set reserved_alert_budget = 40 where id and reserved_alert_budget = 25 and golive_completed_at is null;
-update public.app_settings set all_clear_enabled = true where id and golive_completed_at is null;
-alter table public.app_settings enable trigger audit_settings;
+-- One statement (a DO block), so it is all or nothing even when pasted into the SQL editor and
+-- stopped partway: the audit trigger can't be left switched off.
+do $$ begin
+  alter table public.app_settings disable trigger audit_settings;
+  update public.app_settings set reserved_alert_budget = 40 where id and reserved_alert_budget = 25 and golive_completed_at is null;
+  update public.app_settings set all_clear_enabled = true where id and golive_completed_at is null;
+  alter table public.app_settings enable trigger audit_settings;
+end $$;
 
 -- ---------------------------------------------------------------- L2: no AI key storage
 -- The optional AI key setting was never used. It is gone, with its encrypted column.

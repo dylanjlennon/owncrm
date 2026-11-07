@@ -63,7 +63,8 @@ Environment Variables and in .env.local, never in chat. Redeploy.
 
 ```
 In Healthchecks.io, create TWO checks, each emailing me AND my backup contact:
-1. "CRM app": every 15 minutes, 15 minutes grace. Put its ping address in HEALTHCHECK_PING_URL in Vercel. Redeploy.
+1. "CRM app": every 15 minutes, 15 minutes grace. Put its ping address in HEALTHCHECK_PING_URL in Vercel. Redeploy. It means "the scheduler ran".
+   Optional third check, "CRM checks": every 15 minutes, 15 minutes grace, ping address in HEALTHCHECK_CHECKS_URL. It goes down while the backup, self-test, test lead or sending is red.
 2. "CRM backup": every 1 day, 2 hours grace. Keep its ping address for Prompt 8 (GitHub secret HEALTHCHECK_BACKUP_URL).
 Explain: the first emails me if the app goes quiet; the second emails me if the nightly backup stops or fails,
 even if GitHub never starts it.

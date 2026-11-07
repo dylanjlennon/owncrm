@@ -16,13 +16,14 @@ Open a contact, Details. Pick the birthday month and day (the year is never aske
 Open the contact, "Log what happened", choose Call, write a line. This also stops no-reply alerts for that lead.
 
 ## Put the form on your website
-Settings shows your form address. Link to it from your site ("Contact me"). To show it inside your own web page in a frame, add your site's address to `LEAD_FORM_FRAME_ANCESTORS` in your hosting settings (for example `https://www.yourdomain.com https://yourdomain.com`) and redeploy. Only the form can be framed, and only by the sites you list. Every other page refuses to be framed. The words beside the checkbox are stored with each lead, exactly. Change them in Settings. Add `?source=Open%20house` to the address to label where a lead came from. Have your website also email you a copy, in case the CRM is down.
+Settings shows your form address. Link to it from your site ("Contact me"). The form takes 10 posts per visitor address in 10 minutes. If more than 60 arrive in an hour from all visitors together, every post is still saved, but they come to you in a "Many new leads" list instead of one email each, and you get one "Your web form is being flooded" email. Only past 600 an hour are posts turned away. To show it inside your own web page in a frame, add your site's address to `LEAD_FORM_FRAME_ANCESTORS` in your hosting settings (for example `https://www.yourdomain.com https://yourdomain.com`) and redeploy. Only the form can be framed, and only by the sites you list. Every other page refuses to be framed. The words beside the checkbox are stored with each lead, exactly. Change them in Settings. Add `?source=Open%20house` to the address to label where a lead came from. Have your website also email you a copy, in case the CRM is down.
 
 ## Forward lead emails
-Point your Realtor.com lead notifications (and others) at your receiving address on your email subdomain. Ones the CRM can read become leads. The rest go to Needs review.
+Point your Realtor.com lead notifications (and others) at your receiving address on your email subdomain. Ones the CRM can read become leads. The rest go to Needs review, and you get one "An email needs review" email at most every 12 hours, with a count. Each sender can turn up to 20 emails an hour into leads, and all senders together 100; past that, emails are still saved to Needs review but not read.
 
 ## Import a spreadsheet
-Import, choose the CSV (up to 4 MB; split bigger files), match the columns, check the preview, Import. Download the error file for rows that didn't fit. Undo is one click on the import's page. Nobody is emailed, and consent is unknown for everyone imported.
+Import, choose the CSV (up to 4 MB; split bigger files), match the columns, check the preview, Import. Undo is one click on the import's page. Nobody is emailed, and consent is unknown for everyone imported.
+The file is checked the moment you upload it. Rows with a Social Security, routing, account or card number, or with health or legal words, are not saved at all, and the file itself is never saved. The error file lists the line number and the reason for each refused row, never the row itself: open your own copy of the file to fix those lines. Finish the import within a day; after that the uploaded rows are cleared and you upload again.
 
 ## Import a rescue folder
 Import, "A rescue folder", select every file in the folder (up to 4 MB in all). If it doesn't pass the check, download the error file. It names the file, line and column of each problem. Rows that mention health or a legal matter, or hold a number shaped like a Social Security, routing or account number, are refused on purpose. Bigger folder: ask your agent to run `npm run contract:sql <folder>` and paste the result into the Supabase SQL editor.
@@ -42,6 +43,13 @@ Runs every Monday morning. Cleanup lists problems; it never changes a contact. I
 ## Go-live
 Status, go-live checklist. Every item must pass: settings, verified domain, logged-out read test, public signup off (checked again when you press Finish), test lead, test alert you confirm, test backup with its own outside check, app watchdog check-in, and the daily all-clear turned on.
 
+## Updating (apply the database change first)
+When an update comes with a new file in `supabase/migrations/`, apply the migration **first**, then deploy the app. The new app relies on the new database rules (for this round: `20261107000100_review_fixes.sql`, then `20261107000200_review_fixes_2.sql`, in that order). If the app goes live first, some buttons fail until the migration runs, and safety checks the app expects from the database are missing.
+1. Back up (or check last night's backup is green on Status).
+2. Ask your agent to apply the new migration files to your project, in name order (Supabase CLI `supabase db push`, or paste each file into the SQL editor and run it whole).
+3. Then deploy the app, and run `npm run gate` before you do.
+A backup taken before an update still restores afterwards (RESTORE.md).
+
 ## Monthly check-up
 1. Run `npm audit` and check the Next.js security page for your version (15.x). Status shows the Next.js version you are running. Its "Last deploy" date is not an update check: any redeploy resets it.
 2. Update with your agent, run `npm run gate`, deploy only if it passes.
@@ -53,10 +61,17 @@ Status, go-live checklist. Every item must pass: settings, verified domain, logg
 On by default (Settings, "Send me a daily all-clear email"). Every morning it reads every check on Status, not just what ran that minute, and says when the last backup finished and when the watchdog last heard from the app. "All clear" means every check is green. Make the sender a VIP on your phone. No email by that time means something is wrong.
 
 ## How many alert emails you can get
-Alerts have their own share of your daily email limit (Settings, "Held back for alerts", 40 by default), so they can't use up the allowance your client email needs, and client email can't use theirs.
+Alerts have their own share of your daily email limit (Settings, "Held back for alerts", 40 by default). Client email gets the rest: with a limit of 100 a day, 60 client emails, however many alerts went out. Settings won't save a daily or monthly limit that is not higher than the number held back for alerts.
 - A red check emails you once every 12 hours while it stays red, not every few minutes.
 - Lead alerts and system alerts each keep a reserve the other can't use. A flood of spam on your form can't hide a "backup stopped" email, and a broken check can't stop new-lead alerts.
-- If more than 10 new leads arrive in an hour, you get one "Many new leads" email instead of one per lead. The rest go out after the hour.
+- The last few system alerts are kept for the ones that also go to your backup contact (backup stopped, test lead failed, sending paused), so junk email can't use them up.
+- If more than 10 new leads arrive in an hour, or the day's lead alerts run low (about 22 one-by-one lead emails a day with the defaults, about 5 leads with every reminder), new leads are listed in a "Many new leads" email instead of one each. The list comes at most once an hour, and less often when the day's share is low, so it lasts until midnight. Every lead is still saved and every lead is in a list. Leads in a list don't get "No reply yet" reminders, so read the list.
+- New-lead alerts that failed are retried newest first.
+
+## The outside watchdog
+Your "CRM app" check on Healthchecks.io (HEALTHCHECK_PING_URL) means one thing only: the scheduler ran. If the app, Vercel or the scheduler stops, the check goes quiet and Healthchecks emails you. A red check on Status (a stopped backup, history sync with your laptop off) does not hold it down, so a real outage always shows. Red checks reach you by email and on Status instead.
+Optional: a second check, "CRM checks" (HEALTHCHECK_CHECKS_URL in Vercel, every 15 minutes), goes down while the backup, the logged-out read test, the test lead or sending is red. History sync, the email allowance and database size are left out of it.
+If you don't set up a watchdog at all, a red check shows only in email and on Status. Vercel's cron log shows the scheduler ran, not that a check is red. Go-live needs the watchdog.
 
 ## What each red check means
 | Red check | What it means | What to do |

@@ -29,3 +29,9 @@
 **What if a forwarded lead email changes format?** It lands in Needs review and you get an email. Nothing is lost. The Realtor.com reader was built from a sample; check it against a real lead email after setup.
 
 **What happens if Vercel, Supabase or Resend has an outage?** The CRM goes down with it. The outside watchdog emails you. Leads sent to your form during an outage are lost, so also have your form email you a copy.
+
+**What happens if spam floods my web form?** Nothing is lost. One visitor address can send 10 posts in 10 minutes; more are turned away without blocking anyone else. If more than 60 posts arrive in an hour, they are all saved but listed in a "Many new leads" email instead of one email each, and you get one "Your web form is being flooded" email. Real leads are in that list, so read it.
+
+**Does the CRM keep the spreadsheets I import?** No. It keeps only the rows that passed the checks, and only until you finish the import (or a day). Refused rows are never saved, not even in the error file, which lists line numbers and reasons only.
+
+**Will an old backup still restore after an update?** Yes. If an update removed a table, the restore skips that table, says so, and checks every other table. Birthdays saved with a year lose the year on restore, as they do in the app.

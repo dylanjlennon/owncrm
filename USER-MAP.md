@@ -39,7 +39,7 @@ On your own computer
 
 ## What happens every few minutes
 
-The scheduler runs reminders and alerts, checks every item on Status, emails you once (per 12 hours) about anything red, then checks in with the outside watchdog. If it stops, the watchdog emails you within 30 minutes and every screen shows a red bar.
+The scheduler runs reminders and alerts, checks every item on Status, emails you once (per 12 hours) about anything red, then checks in with the outside watchdog. The check-in means "the scheduler ran", even when something on Status is red. If the scheduler stops, the watchdog emails you within 30 minutes and every screen shows a red bar.
 
 ## What happens every night
 
