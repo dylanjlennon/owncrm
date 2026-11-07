@@ -71,7 +71,7 @@ try { await fetch(`${APP}/login`); console.error(`Port ${PORT} is already in use
 const server = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'start', '-p', String(PORT)], {
   detached: true,
   env: { ...process.env, SUPABASE_URL: `http://127.0.0.1:${RELAY}`, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: PLACEHOLDER, APP_URL: APP,
-    EMAIL_ADAPTER: 'mock', MOCK_EMAIL_LOG: MAIL, LEAD_FORM_FRAME_ANCESTORS: 'https://www.example.com', MOCK_INBOUND_DIR: INBOUND, DEMO_MODE: 'true', HEALTHCHECK_PING_URL: `http://127.0.0.1:${RELAY}/__watchdog/ping`, ...secrets },
+    EMAIL_ADAPTER: 'mock', MOCK_EMAIL_LOG: MAIL, LEAD_FORM_FRAME_ANCESTORS: 'https://www.example.com', MOCK_INBOUND_DIR: INBOUND, DEMO_MODE: 'true', HEALTHCHECK_PING_URL: `http://127.0.0.1:${RELAY}/__watchdog/ping`, HEALTHCHECK_CHECKS_URL: `http://127.0.0.1:${RELAY}/__watchdog/checks`, ...secrets },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
 let serverLog = ''; server.stdout.on('data', (d) => { serverLog += d; }); server.stderr.on('data', (d) => { serverLog += d; });
@@ -371,7 +371,11 @@ try {
 
   // ---- 9. watchdog, banner, status, self-test, go-live ----
   const lastTick = (await db().from('job_runs').select('ok, detail').eq('job', 'tick').order('id', { ascending: false }).limit(1).single()).data;
-  check('watchdog gets a check-in after every run, and /fail when a check failed', watchdog.length >= 3 && watchdog.at(-1).url === (lastTick.detail.includes('failed') ? '/__watchdog/ping/fail' : '/__watchdog/ping'), JSON.stringify({ watchdog: watchdog.slice(-2), lastTick }));
+  // The main check means only "the scheduler ran" (N8). Red pipeline checks go to the second check.
+  const mainPings = watchdog.filter((w) => w.url.startsWith('/__watchdog/ping'));
+  const checkPings = watchdog.filter((w) => w.url.startsWith('/__watchdog/checks'));
+  const pipelineRed = /Logged-out read test|Nightly backup|Weekly test lead|Email sending|\b(no_reply|deal_reminders|hygiene|self_test|fake_lead|backup|sending)\b/.test(lastTick.detail);
+  check('watchdog gets a check-in after every run, and /fail when a check failed', lastTick.ok && mainPings.length >= 3 && mainPings.at(-1).url === '/__watchdog/ping' && checkPings.length === mainPings.length && checkPings.at(-1).url === (pipelineRed ? '/__watchdog/checks/fail' : '/__watchdog/checks'), JSON.stringify({ watchdog: watchdog.slice(-2), lastTick }));
   await page.goto(`${APP}/status`);
   check('status says "You are the IT department"', (await page.textContent('body')).includes('You are the IT department'));
   await page.click('button:has-text("Run logged-out read test")');
@@ -402,8 +406,9 @@ try {
   const { data: supp } = await db().from('suppressions').select('normalized').eq('kind', 'email');
   const { data: open } = await db().from('v_households').select('id, primary_email, display_stage').not('primary_email', 'is', null).neq('display_stage', 'do not contact').limit(50);
   const budgetTarget = open.find((h) => !supp.some((x) => x.normalized === h.primary_email.toLowerCase()));
-  const { data: usage } = await db().from('v_email_usage').select('sent_today').single();
-  await db().from('app_settings').update({ daily_email_cap: usage.sent_today + 41, reserved_alert_budget: 40 }).eq('id', true);
+  // The guard counts client mail only against daily cap minus the alert reserve, so leave room for one.
+  const { data: usage } = await db().from('v_email_usage').select('sent_today, alerts_today').single();
+  await db().from('app_settings').update({ daily_email_cap: usage.sent_today - usage.alerts_today + 41, reserved_alert_budget: 40 }).eq('id', true);
   for (let i = 0; i < 2; i++) {
     await page.goto(`${APP}/contacts/${budgetTarget.id}`);
     await page.fill('input[name=subject]', `Budget check ${i}`); await page.fill('textarea[name=body]', 'Hello');
