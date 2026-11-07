@@ -126,7 +126,7 @@ describe('N11 and H1/H3 round 2: Unicode, plurals and missed shapes', async () =
       'jail', 'prison sentence', 'DUI', 'indicted', 'litigation pending', 'Chapter 7 filing', 'judgment against him']) expect(mentionsHealthOrLegal(t), t).toBe(true);
   });
   it('catches the number shapes round 2 found', () => {
-    for (const t of ['a/c 9876543210', 'acct no. 0012345', 'acct-123456789012', '_021000021', '021000021_', '123.45.6789', '123 456 789', '12345 6789',
+    for (const t of ['a/c 9876543210', 'acct no. 0012345', 'acct-123456789012', '_021000021', '021000021_', '123.45.6789', '123 456 789', 'ssn 12345 6789',
       '123-456-789', 'EIN 12-3456789', 'passport 123456789', 'ssn123456789']) expect(containsSensitive(t), t).toBe(true);
   });
   it('still leaves ordinary real estate text alone', () => {
@@ -158,5 +158,56 @@ describe('L3 round 3: SSNs written with Unicode dashes and other shapes', async 
   it('still leaves real addresses and dates alone', () => {
     for (const t of ['test-lead-1762450000000@example.com', 'demo.agent2026@example.com', '11/07/2026', '2026–11–07', 'Lot 12–14', '$450,000–$475,000'])
       expect(containsSensitive(t), t).toBe(false);
+  });
+});
+
+// Real estate wording that must pass the health and legal list and the number rules. In a
+// contract folder one refused cell blocks the whole folder, so each of these would stop a sync.
+export const REAL_ESTATE_FALSE_POSITIVES = [
+  'HOA disclosure: no pending litigation',
+  'No pending litigation and no judgments against the HOA',
+  'No known lawsuits against the association',
+  'Old jail renovated into lofts',
+  'Former county jail converted to condos',
+  '412 Prison Camp Rd, Candler',
+  'Lot on Old Prison Camp Road',
+  '45 Hospital Dr',
+  'Doctors Dr cul-de-sac',
+  'Close to Mission Hospital',
+  'Walking distance to the clinic and shops',
+  'A stroke of luck on the appraisal',
+  'The price nearly gave me a heart attack',
+  'Full rehab needed, priced accordingly',
+  'Rehabbed kitchen and new roof',
+  'Bank-owned foreclosure listing',
+  'Foreclosure auction on the courthouse steps',
+  'Pre-foreclosure sale, motivated seller',
+  'Closing attorney booked, inspection Friday, probate sale',
+  'The deal died at inspection',
+  'Assisted living community nearby',
+];
+const REAL_ESTATE_NUMBERS = ['NC 28801 2019 build', 'Asheville NC 28801 1925 bungalow', 'zip 28803 2004 remodel'];
+// Still refused: the same words about a person.
+const STILL_REFUSED = [
+  'jail', 'spent two years in prison', 'had a stroke last spring', 'heart attack', 'litigation pending', 'judgment against him',
+  'facing foreclosure', 'just got out of rehab', 'admitted to the hospital', 'rushed by ambulance to the hospital', 'Dr Cancer Clinic',
+  'lawsuit with her ex', 'in a divorce lawsuit',
+];
+
+describe('L4 round 3: real estate wording is not refused', () => {
+  it.each(REAL_ESTATE_FALSE_POSITIVES)('passes "%s"', (t) => {
+    expect(mentionsHealthOrLegal(t)).toBe(false);
+    expect(containsSensitive(t)).toBe(false);
+    expect(validateContract(folder(`h1,Testy McExample,sphere,personal,${t.replace(/,/g, ';')}`)).ok).toBe(true);
+  });
+  it.each(REAL_ESTATE_NUMBERS)('a zip code and a year are not an SSN: "%s"', (t) => {
+    expect(containsSensitive(t)).toBe(false);
+  });
+  it.each(STILL_REFUSED)('still refuses "%s"', (t) => {
+    expect(mentionsHealthOrLegal(t)).toBe(true);
+  });
+  it('a 5+4 number next to the word SSN is still caught', () => {
+    expect(containsSensitive('SSN 12345 6789')).toBe(true);
+    expect(containsSensitive('social security no. 12345-6789')).toBe(true);
   });
 });

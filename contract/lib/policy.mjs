@@ -34,10 +34,23 @@ export const PROTECTED = [
 ];
 const PROTECTED_RE = new RegExp(`\\b(${PROTECTED.map((w) => w.replace(/ /g, '\\s+')).join('|')})\\b`, 'i');
 
+const PROTECTED_ALL = new RegExp(PROTECTED_RE.source, 'gi');
+// "Old" about a building or its parts, not a person: "old jail renovated into lofts", "old roof".
+const OLD_THING_AFTER = /^\s+(?:(?:county|city|town|mill|stone|brick|textile)\s+)?(?:jail|prison|hospital|house|home|farmhouse|cabin|barn|mill|school(?:house)?|building|warehouse|factory|store|post office|station|roof|floors?|windows?|wiring|plumbing|furnace|hvac|water heater|kitchen|bath(?:room)?s?|carpet|deck|siding|growth|trees?|town|world|fixtures?|foundation|chimney|garage|shed)\b/i;
+
 /** @param {string | null | undefined} text */
 export function mentionsProtectedTrait(text) {
   if (!text) return false;
-  return tooLong(text) || PROTECTED_RE.test(plain(text));
+  if (tooLong(text)) return true;
+  const t = plain(text);
+  for (const m of t.matchAll(PROTECTED_ALL)) {
+    const after = t.slice(/** @type {number} */ (m.index) + m[0].length, /** @type {number} */ (m.index) + m[0].length + 60);
+    // Part of a street name ("Old Prison Camp Rd", "White Oak Dr").
+    if (/^[A-Z]/.test(m[0]) && STREET_AFTER.test(after)) continue;
+    if (/^old$/i.test(m[0]) && OLD_THING_AFTER.test(after)) continue;
+    return true;
+  }
+  return false;
 }
 
 // Topics that are never summarized and keep a thread out of scope.
@@ -68,10 +81,47 @@ export const HEALTH_LEGAL_RE = new RegExp([
   String.raw`\b(oncolog\w*|cardiolog\w*|strokes?|heart attacks?|icu|intensive care|hiv|diabet\w*|multiple sclerosis|parkinson'?s|autis\w*|ivf|remission|(?:clinical|major|severe|postpartum) depression|depressive|antidepressants?|depression (?:and|&) anxiety|anxiety (?:and|&) depression|memory care|nursing homes?|medical leave|sick leave|passed away|died (?:of|from))\b`,
   String.raw`\b(lawsuits?|sued|suing|custody|custodial|divorc\w*|court (?:date|hearing|order)s?|subpoena\w*|bankrupt\w*|chapter (?:7|11|13)\b(?: filing| bankruptcy)?|foreclos\w*|arrest\w*|criminal|felon\w*|misdemeanou?r\w*|probation|parole|restraining orders?|eviction lawsuits?|judgments? against|jail\w*|prison\w*|incarcerat\w*|dui|dwi|indict\w*|convict(?:ed|ion)s?|litigat\w*)\b`,
 ].join('|'), 'i');
+// Some of those words are ordinary real estate wording in the right place. A match is let
+// through only in these narrow cases (tests/sanitize.test.ts has the list that must pass):
+// - part of a street name: "Prison Camp Rd", "45 Hospital Dr", "Doctors Dr";
+// - a building, not a person: "old jail renovated into lofts", "close to Mission Hospital";
+// - a set phrase: "a stroke of luck", "nearly gave me a heart attack";
+// - a "no ..." disclosure: "no pending litigation", "no judgments against the HOA";
+// - the property, not the owner: "foreclosure listing", "bank-owned foreclosure", "full rehab".
+// Anything else that matches is refused, as before.
+const STREET_AFTER = /^(?:\s+[A-Z][a-z]+){0,2}\s+(?:Rd|Road|St|Street|Ave|Avenue|Dr|Drive|Ln|Lane|Way|Ct|Blvd|Boulevard|Cir|Circle|Pl|Place|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Ridge|Cove|Creek|Branch|Gap|Mtn)\b/;
+const BUILDING = /^(?:jails?|prisons?|hospitals?|clinics?|hospices?)$/i;
+const BUILDING_BEFORE = [
+  /\b(?:old|former|historic|converted|renovated|abandoned)\s+(?:[\w'-]+\s+)?$/i,
+  /(?:^|\b)(?:[Nn]ear(?:by)?|[Cc]lose to|[Nn]ext to|[Aa]cross from|[Mm]inutes (?:to|from)|[Ww]alk(?:ing)? (?:distance )?to|[Dd]rive to)\s+(?:the\s+)?(?:[A-Z][\w.'-]*\s+){0,3}$/,
+];
+const NEGATED = /^(?:litigat\w*|lawsuits?|judgments? against|bankrupt\w*|foreclos\w*|liens?)$/i;
+const NEGATED_BEFORE = /\b(?:no|not any|without|free of|free from)\s+(?:(?:pending|known|current|open|outstanding|active|recorded|threatened|or)\s+){0,3}$/i;
+const PROPERTY_AFTER = /^\s+(?:listings?|sales?|auctions?|propert(?:y|ies)|homes?|houses?|market|inventory|deals?|lists?|projects?|loans?|budgets?|costs?|needed|required|work|estimates?|candidates?|specials?)\b/i;
+const PROPERTY_BEFORE = /\b(?:bank[- ]owned|reo|pre-|full|complete|gut|light|heavy|total|needs?(?: a)?|cosmetic|major|minor)\s*$/i;
+
+/** True when the match at index i is one of the allowed real estate uses above. */
+function allowedUse(/** @type {string} */ t, /** @type {number} */ i, /** @type {string} */ word) {
+  const before = t.slice(Math.max(0, i - 60), i);
+  const after = t.slice(i + word.length, i + word.length + 60);
+  if (/^[A-Z]/.test(word) && STREET_AFTER.test(after)) return true;
+  if (BUILDING.test(word) && BUILDING_BEFORE.some((re) => re.test(before))) return true;
+  if (/^strokes?$/i.test(word) && /^\s+of\b/i.test(after)) return true;
+  if (/^heart attacks?$/i.test(word) && /\b(?:gave|give|gives|giving|almost|nearly)\s+(?:me|him|her|us|you|them)?\s*an?\s+$/i.test(before)) return true;
+  if (NEGATED.test(word) && NEGATED_BEFORE.test(before)) return true;
+  if (/^(?:foreclos\w*|rehab)$/i.test(word) && (PROPERTY_AFTER.test(after) || PROPERTY_BEFORE.test(before))) return true;
+  if (/^rehabb(?:ed|ing)$/i.test(word)) return true;
+  return false;
+}
+const HEALTH_LEGAL_ALL = new RegExp(HEALTH_LEGAL_RE.source, 'gi');
+
 /** @param {string | null | undefined} text */
 export function mentionsHealthOrLegal(text) {
   if (!text) return false;
-  return tooLong(text) || HEALTH_LEGAL_RE.test(plain(text));
+  if (tooLong(text)) return true;
+  const t = plain(text);
+  for (const m of t.matchAll(HEALTH_LEGAL_ALL)) if (!allowedUse(t, /** @type {number} */ (m.index), m[0])) return true;
+  return false;
 }
 
 // Text copied from an email that tries to give orders. Refused in summaries.

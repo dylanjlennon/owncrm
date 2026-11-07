@@ -63,8 +63,9 @@ const RULES = [
   // SSN shapes: 123-45-6789, 123.45.6789, 123 45 6789, 123/45/6789, 123-456-789, 123 456 789.
   { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}[-./\s]\d{2}[-./\s]\d{4}${END}`, 'g') },
   { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}([-.\s])\d{3}\1\d{3}${END}`, 'g') },
-  { name: 'SSN', re: new RegExp(String.raw`${START}\d{5}[.\s]\d{4}${END}`, 'g') },
   // With the word: "SSN 123456789", "ss# 12345 6789", "social security number: 123-45-6789".
+  // The 5+4 shape is checked only next to the word: on its own it is a zip code and a year
+  // ("NC 28801 2019 build").
   { name: 'SSN', re: new RegExp(String.raw`\b(?:ssn|ss#|social security(?: number| no\.?)?)${SEP}(?:is${SEP})?(?:\d{3}-?\d{2}-?\d{4}|\d{5}[-.\s]\d{4})(?!\d)`, 'gi') },
   { name: 'tax id', re: new RegExp(String.raw`\b(?:ein|tin|itin|tax\s?id)\b${SEP}(?:(?:no\.?|number)${SEP})?\d{2}-?\d{7}(?!\d)`, 'gi') },
   { name: 'passport number', re: new RegExp(String.raw`\bpassport${SEP}(?:(?:no\.?|number)${SEP})?[A-Z0-9]{6,9}\b`, 'gi') },
