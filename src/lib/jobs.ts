@@ -12,3 +12,9 @@ export async function lastSuccess(db: SupabaseClient, job: string): Promise<stri
   const { data } = await db.from('job_runs').select('finished_at').eq('job', job).eq('ok', true).order('finished_at', { ascending: false }).limit(1).maybeSingle();
   return data?.finished_at ?? null;
 }
+
+/** When the job last finished, whether it worked or not. */
+export async function lastFinished(db: SupabaseClient, job: string): Promise<string | null> {
+  const { data } = await db.from('job_runs').select('finished_at').eq('job', job).not('finished_at', 'is', null).order('finished_at', { ascending: false }).limit(1).maybeSingle();
+  return data?.finished_at ?? null;
+}

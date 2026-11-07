@@ -1,7 +1,6 @@
 import { notFound } from 'next/navigation';
 import { requireOwner } from '@/lib/auth';
-import { parseCsv } from '@/lib/csv';
-import { IMPORT_FIELDS, guessMapping, splitRows, type Mapping } from '@/lib/importing';
+import { IMPORT_FIELDS, guessMapping, splitRows, readDraft, readErrorFile, type Mapping } from '@/lib/importing';
 import { Flash } from '@/components/Flash';
 import { commitImport, undoImport } from '../actions';
 
@@ -47,12 +46,24 @@ export default async function ImportDetail({ params, searchParams }: { params: P
       </>
     );
   }
-  const rows = parseCsv(imp.raw_csv || '');
-  const headers = rows[0] || [];
+  const draft = readDraft(imp.raw_csv);
+  if (!draft) {
+    return (
+      <>
+        <h1>Import: {imp.filename}</h1>
+        <Flash code={sp.msg} />
+        <div className="panel"><p data-testid="import-expired">This upload was not imported within a day, so its rows were cleared. Nothing was imported. Upload the file again to continue.</p></div>
+      </>
+    );
+  }
+  const headers = draft.headers;
   const guessed = guessMapping(headers);
   const mapping: Mapping = { ...guessed };
   for (const k of IMPORT_FIELDS) if (sp[`m_${k}`] !== undefined) { const n = Number(sp[`m_${k}`]); if (sp[`m_${k}`] === '') delete mapping[k]; else if (!isNaN(n)) mapping[k] = n; }
-  const { good, bad } = splitRows(rows.slice(1), mapping);
+  const split = splitRows(draft.rows, mapping, draft.lines);
+  const good = split.good;
+  // Rows refused on upload (never stored) plus rows refused with this column matching.
+  const bad = [...readErrorFile(imp.error_csv), ...split.bad].sort((a, b) => a.line - b.line);
   return (
     <>
       <h1>Match columns: {imp.filename}</h1>
@@ -65,7 +76,7 @@ export default async function ImportDetail({ params, searchParams }: { params: P
         </div>
         <button className="quiet" type="submit">Update preview</button>
       </form>
-      <p data-testid="import-preview"><strong>{good.length}</strong> rows ready. <strong>{bad.length}</strong> rows have problems and will go in the error file. {rows.length - 1} rows in the file.</p>
+      <p data-testid="import-preview"><strong>{good.length}</strong> rows ready. <strong>{bad.length}</strong> rows have problems and will go in the error file. {imp.total_rows} rows in the file.</p>
       <div className="table-wrap"><table>
         <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Stage</th></tr></thead>
         <tbody>{good.slice(0, 10).map((g, i) => <tr key={i}><td>{g.display_name}</td><td>{g.email}</td><td>{g.phone}</td><td>{g.stage}</td></tr>)}</tbody>

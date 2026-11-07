@@ -2,7 +2,7 @@
 
 A small CRM for one real estate agent, that the agent owns: the database, the code and the backups. It keeps your contacts, follow-ups and deal dates, catches leads from your website and forwarded lead emails, tells you when a lead is waiting, and shouts when something breaks.
 
-It can also rescue your relationships from your own history. Your own AI agent reads your past email and texts on your own computer, finds the people you have real estate relationships with, and you approve each one before it is saved. Only summaries and dates come into the CRM. Your messages stay on your computer.
+It can also rescue your relationships from your own history. Plain programs on your computer read your exports and strip out account, card, Social Security and license numbers and wire details. Then your own AI agent reads short, cleaned snippets and suggests who is a real estate relationship. That step goes through your AI company's servers under your own account, so turn off training on your data and check your firm's AI policy first. You approve every person. Only summaries and dates come into the CRM. Your export files stay on your computer.
 
 **This is not a Follow Up Boss replacement.** It is ownership and control, not savings.
 
@@ -24,7 +24,7 @@ It can also rescue your relationships from your own history. Your own AI agent r
 | GitHub (code and nightly encrypted backup) | $0 | Use a private repository. |
 | A domain you control | About $1 to $2 a month | Needed to send email. A Gmail address or a brokerage domain without DNS access won't work. |
 
-**About $45 to $65 a month** for a setup you can rely on. Prices are from each provider's pricing page in November 2026. Check them before you start.
+**About $45 to $65 a month** for a setup you can rely on, plus an AI plan (about $20 a month) if you don't already pay for one. The software itself is free (AGPL-3.0). Prices are from each provider's pricing page in November 2026. Check them before you start.
 
 ## What it can and can't do
 
@@ -43,6 +43,29 @@ Two phases that share one data shape, and work with any AI coding agent (Claude 
 2. **Build** (`prompts/BUILD.md`): your agent sets up this app (Supabase, Vercel, Resend, two-step sign-in, go-live checks) and imports the folder. Or it builds its own from [SPEC.md](SPEC.md), as long as it accepts the same folder.
 
 The data shape lives in [`/contract`](contract/README.md). Read [docs/TWO-PHASES.md](docs/TWO-PHASES.md) for the plain version.
+
+## Step 0: get the download and the tools
+
+Do this once, before any prompt. It takes about 20 minutes.
+
+1. **Install Node.js 22.13 or newer.** Go to nodejs.org and download the LTS installer (22 or newer).
+   - Mac: open the downloaded .pkg and click through.
+   - Windows: open the downloaded .msi and click through. Leave "Add to PATH" ticked.
+   - Check it worked: open Terminal (Mac) or PowerShell (Windows) and type `node -v`. It should say v22.13 or higher.
+2. **Install git.**
+   - Mac: in Terminal type `git --version`. If it isn't there, macOS offers to install the developer tools. Say yes.
+   - Windows: download "Git for Windows" from git-scm.com and click through with the default choices.
+3. **Get the download.** In Terminal or PowerShell:
+   ```
+   git clone https://github.com/YOUR-GITHUB-NAME/owncrm
+   cd owncrm
+   npm install
+   ```
+   (The address is a placeholder until the public repository is published. Use the address you were given.)
+   No git? On the repository page, press Code, Download ZIP, unzip it, and open that folder instead.
+4. **Open your AI agent in that folder.** Claude Code: type `claude` in the same Terminal window. Codex, Cursor or Gemini CLI: open the `owncrm` folder in it. Then go to "Start here" below.
+
+Windows notes: iMessage rescue needs a Mac. The backup key tool (`age`) and the restore tool (`psql`) aren't built in. Your agent can install them with `winget install FiloSottile.age` and `winget install PostgreSQL.PostgreSQL`. Use `node -e` instead of `openssl` for random secrets (BUILD.md shows how). Paths look like `C:\Users\you\owncrm-rescue` instead of `~/owncrm-rescue`.
 
 ## Start here
 

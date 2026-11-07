@@ -52,7 +52,7 @@ describe('data contract', () => {
   });
   it('a mapped CSV becomes a valid contract', () => {
     const { good: rows } = splitRows([['Testy', 'testy@example.com', '828-555-0142']], { first_name: 0, email: 1, phone: 2 });
-    expect(validateContract(rowsToContractFiles(rows, 'x.csv')).ok).toBe(true);
+    expect(validateContract(rowsToContractFiles(rows)).ok).toBe(true);
   });
   it('a CSV row with a card number is refused into the error file, not imported', () => {
     const { good: rows, bad } = splitRows([['Testy', 'testy@example.com', 'card 4111 1111 1111 1111']], { first_name: 0, email: 1, notes: 2 });

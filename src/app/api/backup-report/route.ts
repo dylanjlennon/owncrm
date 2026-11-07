@@ -5,6 +5,7 @@ import { bearerMatches } from '@/lib/secure';
 import { json, readLimited, ipBucket } from '@/lib/http';
 import { getSettings } from '@/lib/settings';
 import { sendAlert } from '@/lib/alerts';
+import { CHECK_FIX } from '@/lib/tick';
 
 // PUBLIC: the backup workflow reports its checked result here with BACKUP_REPORT_SECRET.
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,8 @@ export async function POST(req: Request) {
   await db.from('job_runs').insert({ job: 'backup', ok, detail, finished_at: new Date().toISOString() });
   if (!ok) {
     const s = await getSettings(db);
-    await sendAlert(db, emailAdapter(), s, env.appUrl(), { subject: 'Backup failed', text: `${detail}\n\nOpen Status: ${env.appUrl()}/status`, alsoBackup: true });
+    // Same subject and key as the scheduler's alert for a red backup, so you get one email, not two.
+    await sendAlert(db, emailAdapter(), s, env.appUrl(), { subject: 'Problem: Nightly backup', key: 'check:backup', text: `The nightly backup failed.\n\nWhat it says: ${detail}\nWhat to do: ${CHECK_FIX.backup}\n\nOpen Status: ${env.appUrl()}/status`, alsoBackup: true });
   }
   return json({ ok: true });
 }

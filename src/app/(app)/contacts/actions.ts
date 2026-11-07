@@ -8,6 +8,8 @@ import { queueAndSend } from '@/lib/email/send';
 import { getSettings } from '@/lib/settings';
 import { env } from '@/lib/env';
 import { STAGES } from '@/lib/config';
+import { birthdayFromMonthDay, nextRepeatDue, parseRepeat, snoozeTo } from '@/lib/followups';
+import { localDate } from '@/lib/time';
 
 const UUID = /^[0-9a-f-]{36}$/i;
 const t = (f: FormData, k: string, max = 500) => String(f.get(k) ?? '').trim().slice(0, max);
@@ -45,7 +47,15 @@ export async function updateContact(f: FormData) {
   if ((STAGES as readonly string[]).includes(stage) || stage === 'under contract') patch.stage = stage;
   if (['personal','firm_provided','portal','unknown'].includes(t(f, 'source_type'))) patch.source_type = t(f, 'source_type');
   if (t(f, 'display_name', 200)) patch.display_name = t(f, 'display_name', 200);
+  const anniv = t(f, 'home_anniversary', 10);
+  if (anniv === '' || /^\d{4}-\d{2}-\d{2}$/.test(anniv)) patch.home_anniversary = anniv || null;
   await db.from('households').update(patch).eq('id', hid);
+  // Birthday: month and day only, so no age is ever stored.
+  if (f.has('birthday_month')) {
+    const bday = birthdayFromMonthDay(t(f, 'birthday_month', 2), t(f, 'birthday_day', 2));
+    const { data: p } = await db.from('people').select('id').eq('household_id', hid).order('created_at').limit(1).maybeSingle();
+    if (p) await db.from('people').update({ birthday: bday }).eq('id', p.id);
+  }
   go(`/contacts/${hid}`, 'saved');
 }
 
@@ -65,14 +75,52 @@ export async function addFollowUp(f: FormData) {
   const hid = id(f);
   const due = t(f, 'due_on', 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) go(`/contacts/${hid}`, 'bad_input');
-  await db.from('tasks').insert({ household_id: hid, title: t(f, 'title', 300) || 'Follow up', due_on: due });
-  go(`/contacts/${hid}`, 'followup_added');
+  const repeat = parseRepeat(t(f, 'repeat_days', 5));
+  const { error } = await db.from('tasks').insert({ household_id: hid, title: t(f, 'title', 300) || 'Follow up', due_on: due, ...(repeat ? { repeat_days: repeat } : {}) });
+  go(`/contacts/${hid}`, error ? 'bad_input' : 'followup_added');
 }
 
 export async function markDone(f: FormData) {
   const { db } = await requireOwner();
-  await db.from('tasks').update({ done_at: new Date().toISOString() }).eq('id', id(f));
+  const taskId = id(f);
+  // Close it only if it is still open, and read back what actually changed. A double click,
+  // Back and resubmit, or Done on a stale page changes nothing the second time, so a
+  // repeating follow-up is never added twice.
+  const { data: closed } = await db.from('tasks').update({ done_at: new Date().toISOString() })
+    .eq('id', taskId).is('done_at', null).select('id, household_id, title, due_on, repeat_days');
+  const task = (closed ?? [])[0];
+  // A repeating follow-up comes back after its interval.
+  if (task?.repeat_days) {
+    const s = await getSettings(db);
+    const today = localDate(new Date(), s.timezone);
+    await db.from('tasks').insert({ household_id: task.household_id, title: task.title, due_on: nextRepeatDue(task.due_on, task.repeat_days, today), repeat_days: task.repeat_days });
+    go(safeBack(t(f, 'back', 200), '/today'), 'followup_repeated');
+  }
   go(safeBack(t(f, 'back', 200), '/today'), 'followup_done');
+}
+
+export async function editFollowUp(f: FormData) {
+  const { db } = await requireOwner();
+  const taskId = id(f);
+  const back = safeBack(t(f, 'back', 200), '/today');
+  const due = t(f, 'due_on', 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(due)) go(back, 'bad_input');
+  const patch: Record<string, unknown> = { title: t(f, 'title', 300) || 'Follow up', due_on: due };
+  const repeat = parseRepeat(t(f, 'repeat_days', 5));
+  if (repeat || t(f, 'had_repeat') === 'yes') patch.repeat_days = repeat;
+  const { error } = await db.from('tasks').update(patch).eq('id', taskId).is('done_at', null);
+  go(back, error ? 'bad_input' : 'followup_saved');
+}
+
+export async function snoozeFollowUp(f: FormData) {
+  const { db } = await requireOwner();
+  const taskId = id(f);
+  const back = safeBack(t(f, 'back', 200), '/today');
+  const s = await getSettings(db);
+  const due = snoozeTo(localDate(new Date(), s.timezone), t(f, 'snooze', 4));
+  if (!due) go(back, 'bad_input');
+  await db.from('tasks').update({ due_on: due }).eq('id', taskId).is('done_at', null);
+  go(back, 'followup_snoozed');
 }
 
 export async function logInteraction(f: FormData) {

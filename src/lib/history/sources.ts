@@ -6,12 +6,12 @@ export type SourceCard = {
 };
 const STORED = 'Name, email, phone, first and last contact dates, message count, a short summary, a suggested stage and next step, and why. No message text.';
 export const SOURCE_CARDS: SourceCard[] = [
-  { key: 'gmail', title: 'Gmail', route: 'Your own Claude session with the Gmail connector. Fallback: a Google Takeout mbox file.',
-    reads: 'Who you emailed and when, subjects, and short snippets, on your computer.', staysLocal: 'Every email body, attachment and snippet.', stored: STORED,
-    disconnect: 'Remove the Gmail connector in your Claude settings, revoke the history token here, and delete the rescue work folder.', verdict: 'Can' },
-  { key: 'outlook', title: 'Outlook', route: 'Your own Claude session with an Outlook connector if your account has one. Fallback: export to an mbox file.',
-    reads: 'Who you emailed and when, subjects, and short snippets.', staysLocal: 'Every email body and attachment.', stored: STORED,
-    disconnect: 'Remove the connector in your Claude settings and revoke the token here.', verdict: 'Can', note: 'PST files need converting to mbox first.' },
+  { key: 'gmail', title: 'Gmail', route: 'A Google Takeout mbox file, cleaned on your computer first. Second choice: your AI agent\'s Gmail connector, which sends headers and snippets to your AI company before any cleaning.',
+    reads: 'Who you emailed and when, subjects, and short snippets, on your computer.', staysLocal: 'Every email body and attachment. The cleaned snippets your AI reads go to your AI company.', stored: STORED,
+    disconnect: 'Remove any Gmail connector from your AI app, revoke the history token here, and delete the rescue work folder.', verdict: 'Can', note: 'Tested on fake files only.' },
+  { key: 'outlook', title: 'Outlook', route: 'An mbox export, cleaned on your computer first. Second choice: an Outlook connector in your AI app, which sends email to your AI company before any cleaning.',
+    reads: 'Who you emailed and when, subjects, and short snippets.', staysLocal: 'Every email body and attachment. The cleaned snippets your AI reads go to your AI company.', stored: STORED,
+    disconnect: 'Remove any connector from your AI app and revoke the token here.', verdict: 'Can', note: 'PST files need converting to mbox first. Tested on fake files only.' },
   { key: 'imessage', title: 'iMessage (Mac only)', route: 'A read-only copy of the Messages database on your Mac. You grant Full Disk Access to your terminal.',
     reads: 'Phone numbers and emails you texted, dates and counts, from a copy. The original is never opened for writing.', staysLocal: 'Every message.', stored: STORED,
     disconnect: 'Remove Full Disk Access from your terminal in System Settings, revoke the token here, and delete the work folder.', verdict: 'Can',

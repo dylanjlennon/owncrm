@@ -8,16 +8,18 @@ Plain programs that run on your computer and need no AI. Follow `prompts/RESCUE.
 |---|---|
 | init | Makes the work folder, `config.json` (your own addresses, date cutoff) and `blocklist.txt` |
 | extract --source X --input PATH | Reads one export into local records: dates, counts, a short redacted snippet. Resumable: running it again adds only new records |
-| aggregate | Groups records into people, leaves out personal and automated ones, writes a redacted file for your AI |
-| review | Checks your AI's `judgments.json` and writes `review.csv`. Your decisions start empty |
+| aggregate | Groups records into people, leaves out personal and automated ones, writes redacted batch files for your AI (`for-ai/batch-001.json` and on, 100 people each; `--batch-size` to change) |
+| review | Checks your AI's `judgments-001.json`, `judgments-002.json` and on (and `judgments.json`), and writes `review.csv`. Your decisions start empty |
 | build | Writes the contract folder from the rows you marked yes, and checks it |
 | check | Checks a contract folder |
 | upload --send | Sends a checked folder to your CRM for review with your history token. Without --send it is a dry run |
 | heartbeat --send | Tells your CRM a scheduled run happened |
-| schedule | Prints a schedule line for your computer |
+| schedule | Writes `owncrm.env` (your CRM address and history token, readable only by you) and prints a schedule line with no token in it |
 
 Sources: `gmail_connector`, `outlook_connector`, `gmail_mbox`, `outlook_mbox`, `imessage`, `google_voice`, `phone_contacts`, `android_sms`, `crm_export`, `deal_records`, `website_lists`.
 
-Every command adds a line to `audit.jsonl` in the work folder. Tokens are never written there.
+Every command adds a line to `audit.jsonl` in the work folder. Tokens are never written there, or in any log.
+
+`upload`, `heartbeat` and `schedule` only work with this app, or an app that implements "The history upload" in SPEC.md. Every other command works on its own.
 
 Needs Node.js 22.13 or newer (it uses the built-in SQLite reader for iMessage). Tested only with fake files built by `rescue/test/fixtures.mjs`.

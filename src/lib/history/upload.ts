@@ -1,5 +1,15 @@
 import { HISTORY_SOURCES } from '../../../contract/lib/policy.mjs';
 import { validateContract, CSV_FILES } from '../../../contract/lib/validate.mjs';
+import { containsSensitive } from '../../../contract/lib/redact.mjs';
+import { mentionsHealthOrLegal } from '../../../contract/lib/policy.mjs';
+
+// The run detail is shown on Status and stored. The rescue tool fills it with error messages that
+// can quote a file, so anything that looks like personal data is replaced, not stored.
+export const HIDDEN_DETAIL = 'Details hidden: they looked like personal data. Check the log on your computer.';
+export function safeRunDetail(v: unknown): string {
+  const d = String(v ?? '').slice(0, 300);
+  return containsSensitive(d) || mentionsHealthOrLegal(d) ? HIDDEN_DETAIL : d;
+}
 
 // What the rescue tool may send. Anything outside this shape is refused whole.
 const TOP = ['client_batch_id', 'source', 'range_start', 'range_end', 'run', 'contract'];
@@ -17,7 +27,7 @@ export function validateHistoryUpload(body: unknown):
   for (const k of ['range_start', 'range_end']) if (b[k] != null && !(typeof b[k] === 'string' && DATE.test(b[k]))) return { ok: false, reason: `${k} must be YYYY-MM-DD` };
   const run = b.run ?? { ok: true, detail: '' };
   if (typeof run !== 'object' || typeof run.ok !== 'boolean' || Object.keys(run).some((k) => !['ok', 'detail'].includes(k))) return { ok: false, reason: 'run must be {ok, detail}' };
-  const base = { ok: true as const, batchId: b.client_batch_id, source: b.source, rangeStart: b.range_start ?? null, rangeEnd: b.range_end ?? null, run: { ok: run.ok, detail: String(run.detail ?? '').slice(0, 300) } };
+  const base = { ok: true as const, batchId: b.client_batch_id, source: b.source, rangeStart: b.range_start ?? null, rangeEnd: b.range_end ?? null, run: { ok: run.ok, detail: safeRunDetail(run.detail) } };
   if (b.contract == null) return { ...base, data: null, households: 0 };
   const c = b.contract;
   if (typeof c !== 'object' || Object.keys(c).some((k) => !['manifest', 'files'].includes(k)) || typeof c.files !== 'object') return { ok: false, reason: 'contract must be {manifest, files}' };

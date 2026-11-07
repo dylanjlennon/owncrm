@@ -4,6 +4,7 @@ const DONE: Record<string, string> = {
   signed_out: 'Every session has ended. Change your password next.',
   unsubscribed: 'You are unsubscribed. You will not get marketing email from this sender again.',
   bad_link: 'This link is not valid or has expired. Nothing was changed.',
+  link_used: 'This link was already used. Each link works once. Nothing else was changed.',
 };
 export default async function Done({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const sp = await searchParams;

@@ -3,11 +3,16 @@ import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireOwner } from '@/lib/auth';
 import { parseCsv } from '@/lib/csv';
-import { IMPORT_FIELDS, splitRows, rowsToContractFiles, errorFile, type Mapping } from '@/lib/importing';
+import { IMPORT_FIELDS, splitRows, rowsToContractFiles, errorFile, readErrorFile, screenUpload, readDraft, type Mapping } from '@/lib/importing';
 import { validateContract, errorsCsv, CSV_FILES } from '../../../../contract/lib/validate.mjs';
 import { undoImport as undo } from '@/lib/undo';
+import { IMPORT_MAX_BYTES } from '@/lib/limits';
+import { containsSensitive } from '../../../../contract/lib/redact.mjs';
+import { mentionsHealthOrLegal } from '../../../../contract/lib/policy.mjs';
 
-const MAX = 5 * 1024 * 1024;
+const MAX = IMPORT_MAX_BYTES;
+// A file name can hold anything. Keep it only if it passes the same checks as a cell.
+const safeFilename = (name: string) => { const n = name.slice(0, 200); return containsSensitive(n) || mentionsHealthOrLegal(n) ? 'Spreadsheet' : n; };
 const UUID = /^[0-9a-f-]{36}$/i;
 
 export async function uploadCsv(f: FormData) {
@@ -18,7 +23,13 @@ export async function uploadCsv(f: FormData) {
   const text = await file.text();
   const rows = parseCsv(text);
   if (rows.length < 2) redirect('/import?msg=import_empty');
-  const { data } = await db.from('imports').insert({ kind: 'csv', filename: file.name.slice(0, 200), raw_csv: text, total_rows: rows.length - 1 }).select('id').single();
+  // Checked before anything is saved. Rows with an account number, an SSN or health or legal text
+  // are not stored at all, only their line number and the reason. The raw file is never stored.
+  const { draft, refused } = screenUpload(rows);
+  const { data } = await db.from('imports').insert({
+    kind: 'csv', filename: safeFilename(file.name), raw_csv: JSON.stringify(draft), total_rows: rows.length - 1,
+    error_csv: refused.length ? errorFile(refused) : null, error_rows: refused.length,
+  }).select('id').single();
   redirect(`/import/${data!.id}?msg=import_uploaded`);
 }
 
@@ -61,17 +72,18 @@ export async function commitImport(f: FormData) {
   let errorCsv: string | null = null;
   let errorRows = 0;
   if (imp.kind === 'csv') {
-    const rows = parseCsv(imp.raw_csv || '');
-    const headers = rows[0];
+    const draft = readDraft(imp.raw_csv);
+    if (!draft) redirect(`/import/${id}?msg=import_expired`);
     const mapping = readMapping(f);
-    const { good, bad } = splitRows(rows.slice(1), mapping);
-    const c = rowsToContractFiles(good, imp.filename || 'file');
+    const { good, bad } = splitRows(draft!.rows, mapping, draft!.lines);
+    const c = rowsToContractFiles(good);
     const v = validateContract({ manifest: c.manifest, files: c.files });
     if (!v.ok) redirect(`/import/${id}?msg=bad_input`);
     payload = v.data;
-    bad.sort((a, b) => a.line - b.line);
-    errorCsv = bad.length ? errorFile(headers, bad) : null;
-    errorRows = bad.length;
+    // Rows refused on upload, plus rows refused now that the columns are matched.
+    const all = [...readErrorFile(imp.error_csv), ...bad];
+    errorCsv = all.length ? errorFile(all) : null;
+    errorRows = all.length;
     await db.from('imports').update({ mapping }).eq('id', id);
   } else {
     payload = JSON.parse(imp.raw_csv || 'null');
@@ -79,7 +91,8 @@ export async function commitImport(f: FormData) {
   }
   const { error } = await db.rpc('import_contract', { p: payload!, p_import: id });
   if (error) redirect(`/import/${id}?msg=bad_input`);
-  await db.from('imports').update({ error_csv: errorCsv ?? imp.error_csv, error_rows: errorRows }).eq('id', id);
+  // import_contract already cleared the stored rows; clear them here too, whatever happened.
+  await db.from('imports').update({ raw_csv: null, error_csv: errorCsv ?? imp.error_csv, error_rows: imp.kind === 'csv' ? errorRows : imp.error_rows }).eq('id', id);
   revalidatePath('/', 'layout');
   redirect(`/import/${id}?msg=import_done`);
 }

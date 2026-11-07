@@ -6,7 +6,7 @@
 // Env: SUPABASE_DB_URL (required), BACKUP_AGE_RECIPIENT (required, an age public key),
 //      BACKUP_DIR (default ./backups), BACKUP_PREVIOUS_MANIFEST (optional),
 //      OWNCRM_URL + BACKUP_REPORT_SECRET (optional, reports to the Status page),
-//      HEALTHCHECK_BACKUP_URL (optional, outside watchdog), BACKUP_FORCE_FAIL=1 (drill).
+//      HEALTHCHECK_BACKUP_URL (outside watchdog, required for go-live), BACKUP_FORCE_FAIL=1 (drill).
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, rmSync } from 'node:fs';
@@ -19,6 +19,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const EXCLUDE = ['app_owner', 'rate_limits'];
 
 async function report(ok, detail) {
+  // Say whether the outside backup check was pinged, so go-live can see it is set up.
+  detail = `${detail} ${env.HEALTHCHECK_BACKUP_URL ? 'Outside check: pinged.' : 'Outside check: not set up (HEALTHCHECK_BACKUP_URL).'}`;
   console.log(`${ok ? 'OK' : 'FAILED'}: ${detail}`);
   const tasks = [];
   if (env.OWNCRM_URL && env.BACKUP_REPORT_SECRET) {

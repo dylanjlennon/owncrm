@@ -1,7 +1,8 @@
 # Nightly encrypted backup, checked before it counts.
 # Runs on GitHub's computers, not on Vercel or Supabase, so it keeps working if the app is down.
 # Needs repository secrets: SUPABASE_DB_URL, BACKUP_AGE_RECIPIENT, OWNCRM_URL, BACKUP_REPORT_SECRET,
-# and optionally HEALTHCHECK_BACKUP_URL. Use a PRIVATE repository. The file is encrypted either way.
+# and HEALTHCHECK_BACKUP_URL (its own Healthchecks check, so a backup that never starts or breaks
+# early still emails you). Use a PRIVATE repository. The file is encrypted either way.
 name: nightly-backup
 on:
   schedule:
@@ -15,6 +16,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - name: Tell the outside backup check that a run started
+        env: { HC: '${{ secrets.HEALTHCHECK_BACKUP_URL }}' }
+        run: '[ -z "$HC" ] || curl -fsS -m 10 --retry 3 "${HC%/}/start" >/dev/null || true'
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
@@ -58,3 +62,9 @@ jobs:
             backups/manifest-*.json
           retention-days: 30
           if-no-files-found: error
+      # If any step above broke (a missing secret, a Postgres mismatch, a billing problem), say so
+      # to the outside check. If this run never starts at all, the check's schedule catches that.
+      - name: Tell the outside backup check that this run failed
+        if: failure()
+        env: { HC: '${{ secrets.HEALTHCHECK_BACKUP_URL }}' }
+        run: '[ -z "$HC" ] || curl -fsS -m 10 --retry 3 "${HC%/}/fail" >/dev/null || true'

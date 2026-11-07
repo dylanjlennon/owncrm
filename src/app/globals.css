@@ -127,3 +127,30 @@ button.danger { background: var(--alarm); border-color: var(--alarm); }
 .nav-phone > summary::-webkit-details-marker { display: none; }
 .menu-toggle { display: inline-block; border: 1px solid var(--fir); padding: 4px 12px; border-radius: var(--radius-s); color: var(--fir); font-weight: 700; } }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+details.edit summary { font-size: .85rem; color: var(--muted); cursor: pointer; margin-top: 4px; }
+details.edit form { margin-top: 8px; }
+form.snooze { display: inline-flex; gap: 6px; align-items: center; }
+form.snooze select { width: auto; }
+/* Utility classes. No inline style attributes, so the CSP can refuse inline styles. */
+.u-grow { flex: 1; }
+.u-wauto { width: auto; }
+.row > .u-w120 { width: auto; flex: 1 1 120px; }
+.row > .u-w160 { width: auto; flex: 1 1 160px; }
+.row > .u-w200 { width: auto; flex: 1 1 200px; }
+.row > .u-f160 { flex: 1 1 160px; }
+.row > .u-f180 { flex: 1 1 180px; }
+.row > .u-f200 { flex: 1 1 200px; }
+.row > .u-f260 { flex: 1 1 260px; }
+.u-w120, .u-w160, .u-w200 { width: auto; }
+.u-mt0 { margin-top: 0; }
+.u-mt8 { margin-top: 8px; }
+.u-mt10 { margin-top: 10px; }
+.u-mt12 { margin-top: 12px; }
+.u-m0 { margin: 0; }
+.u-m0pl18 { margin: 0; padding-left: 18px; }
+.u-mauto { margin: 0 auto; }
+.u-between { justify-content: space-between; }
+.u-contents { display: contents; }
+.u-pre { white-space: pre-wrap; max-height: 260px; overflow: auto; background: #f0f3f1; padding: 10px; }
+.u-offscreen { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.followup-actions { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }

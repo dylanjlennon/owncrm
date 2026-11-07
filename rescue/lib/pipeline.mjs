@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 
 import { join } from 'node:path';
 import { hash, normalizeHandle, inRange } from './util.mjs';
 import { toCsv, parseCsv } from '../../contract/lib/csv.mjs';
-import { SUGGESTED_STAGES, mentionsProtectedTrait, looksLikeInstructions } from '../../contract/lib/policy.mjs';
+import { SUGGESTED_STAGES, mentionsProtectedTrait, looksLikeInstructions, mentionsHealthOrLegal } from '../../contract/lib/policy.mjs';
 import { containsSensitive } from '../../contract/lib/redact.mjs';
 import { CONTRACT_VERSION } from '../../contract/lib/validate.mjs';
 
@@ -157,7 +157,7 @@ export function checkJudgments(raw, candidateIds) {
     const bad = Object.keys(j).filter((k) => !JUDGMENT_KEYS.includes(k));
     if (bad.length) { dropped.push(`${j.candidate_id}: unknown fields ${bad.join(',')}`); continue; }
     const text = [j.display_name, j.summary, j.suggested_next_step, j.why].filter(Boolean).join('\n');
-    if (containsSensitive(text) || mentionsProtectedTrait([j.summary, j.why, j.suggested_next_step].join('\n')) || looksLikeInstructions(text)) { dropped.push(`${j.candidate_id}: refused text`); continue; }
+    if (containsSensitive(text) || mentionsHealthOrLegal(text) || mentionsProtectedTrait([j.summary, j.why, j.suggested_next_step].join('\n')) || looksLikeInstructions(text)) { dropped.push(`${j.candidate_id}: refused text`); continue; }
     if (j.suggested_stage && !SUGGESTED_STAGES.includes(j.suggested_stage)) { dropped.push(`${j.candidate_id}: unknown stage`); continue; }
     if (j.merge_with && !candidateIds.has(j.merge_with)) { dropped.push(`${j.candidate_id}: unknown merge target`); continue; }
     ok[j.candidate_id] = {
@@ -206,7 +206,9 @@ export function buildContract(candidates, reviewText, outDir, meta) {
     const c = byId.get(r[idx('candidate_id')]);
     if (c) approved.set(c.candidate_id, { c, row: r });
   }
-  const households = []; const people = []; const methods = []; const evidence = []; const deals = [];
+  const households = []; const people = []; const methods = []; const evidence = [];
+  /** @type {any[]} */
+  const deals = [];
   /** @type {Map<string, string>} */
   const home = new Map();
   for (const [id, { row }] of approved) {

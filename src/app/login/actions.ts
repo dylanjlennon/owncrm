@@ -6,7 +6,7 @@ import { serviceClient } from '@/lib/supabase/service';
 import { emailAdapter } from '@/lib/email';
 import { env } from '@/lib/env';
 import { sha256 } from '@/lib/secure';
-import { signLink } from '@/lib/tokens';
+import { signLink, LINK_TTL_SECONDS } from '@/lib/tokens';
 import { getSettings } from '@/lib/settings';
 import { sendAlert } from '@/lib/alerts';
 
@@ -36,10 +36,10 @@ async function noteDevice(userId: string) {
   await svc.from('known_devices').insert({ device_hash: hash, label: `${ua.slice(0, 120)} (${where})` });
   const s = await getSettings(svc);
   const secret = env.linkSecret();
-  const link = secret ? `${env.appUrl()}/r/wasnt-me?t=${encodeURIComponent(signLink(secret, 'wasnt_me', userId, 7 * 86400))}` : '(link unavailable: LINK_SIGNING_SECRET is not set)';
+  const link = secret ? `${env.appUrl()}/r/wasnt-me?t=${encodeURIComponent(signLink(secret, 'wasnt_me', userId, LINK_TTL_SECONDS.wasnt_me))}` : '(link unavailable: LINK_SIGNING_SECRET is not set)';
   await sendAlert(svc, emailAdapter(), s, env.appUrl(), {
     subject: 'New sign-in to your CRM',
-    text: `Your password was just used from a device we have not seen.\nDevice: ${ua}\nWhere: ${where}\nTime: ${new Date().toUTCString()}\n\nIf this was you, ignore this email.\nIf it was not you, tap this to end every session right away, then change your password: ${link}`,
+    text: `Your password was just used from a device we have not seen.\nDevice: ${ua}\nWhere: ${where}\nTime: ${new Date().toUTCString()}\n\nIf this was you, ignore this email.\nIf it was not you, tap this to end every session right away, then change your password: ${link}\n(The link works once, for 24 hours.)`,
     alsoBackup: true,
   });
 }

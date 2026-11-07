@@ -4,6 +4,7 @@ import { getSettings } from '@/lib/settings';
 import { formatDateTime } from '@/lib/time';
 import { Flash } from '@/components/Flash';
 import { uploadCsv, uploadContract } from './actions';
+import { SizeCheckedFile } from '@/components/SizeCheckedFile';
 
 export default async function ImportPage({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
   const sp = await searchParams;
@@ -17,15 +18,15 @@ export default async function ImportPage({ searchParams }: { searchParams: Promi
       <div className="notice">Imported people have unknown consent, so they get no marketing email. Nobody is emailed by an import. Every import can be undone in one click.</div>
       <div className="cols">
         <form action={uploadCsv} className="stack panel">
-          <h2 style={{ marginTop: 0 }}>A spreadsheet (CSV)</h2>
+          <h2 className="u-mt0">A spreadsheet (CSV)</h2>
           <p className="muted">From another CRM or a spreadsheet. You match the columns next, then see a preview.</p>
-          <label>CSV file, up to 5 MB<input type="file" name="file" accept=".csv,text/csv" required /></label>
+          <SizeCheckedFile label="CSV file, up to 4 MB" name="file" accept=".csv,text/csv" />
           <button type="submit">Read file</button>
         </form>
         <form action={uploadContract} className="stack panel">
-          <h2 style={{ marginTop: 0 }}>A rescue folder</h2>
+          <h2 className="u-mt0">A rescue folder</h2>
           <p className="muted">The checked folder your AI agent made with the rescue tools. Select every file in the folder.</p>
-          <label>Folder files (manifest.json and the .csv files)<input type="file" name="files" multiple accept=".csv,.json" required /></label>
+          <SizeCheckedFile label="Folder files (manifest.json and the .csv files), up to 4 MB in all" name="files" multiple accept=".csv,.json" />
           <button type="submit">Check folder</button>
         </form>
       </div>

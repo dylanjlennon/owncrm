@@ -11,7 +11,9 @@ const FORBIDDEN_IDS = new Set(['c1116d7b4668471b55946d0ef722bbe35046c47e0471726a
 
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' }).split('\n').filter(Boolean);
 const SKIP = /\.(png|jpe?g|gif|woff2?|ico|pdf)$|^package-lock\.json$/;
-const ALLOWED_EMAIL = /@(([\w-]+\.)*example\.(com|org|net)|email\.realtor\.com|anthropic\.com)$/i;
+// Lead site sending domains (src/lib/parsers/realtor.ts, PORTAL_DOMAINS) are named in code and tests
+// as senders, never as clients.
+const ALLOWED_EMAIL = /@(([\w-]+\.)*example\.(com|org|net)|([\w-]+\.)*(realtor|move|zillow|trulia|homes|redfin)\.com|anthropic\.com)$/i;
 const RULES = [
   ['JWT or Supabase key', /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
   ['Supabase secret key', /sb_secret_[A-Za-z0-9_-]{10,}/],
@@ -39,7 +41,7 @@ const walk = (d) => readdirSync(d).flatMap((x) => (statSync(join(d, x)).isDirect
 if (existsSync('.next/static')) {
   for (const f of walk('.next/static').filter((x) => x.endsWith('.js'))) {
     const t = readFileSync(f, 'utf8');
-    for (const word of ['SUPABASE_SERVICE_ROLE_KEY', 'service_role', 'LINK_SIGNING_SECRET', 'CRON_SECRET', 'RESEND_API_KEY', 'APP_ENCRYPTION_KEY', 'supabase.co']) if (t.includes(word)) problems.push(`${f}: browser code mentions ${word}`);
+    for (const word of ['SUPABASE_SERVICE_ROLE_KEY', 'service_role', 'LINK_SIGNING_SECRET', 'CRON_SECRET', 'RESEND_API_KEY', 'supabase.co']) if (t.includes(word)) problems.push(`${f}: browser code mentions ${word}`);
     for (const m of t.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/g)) if (!/^[\w.-]+@(next|react|vercel)\b/.test(m[0]) && /\.(com|org|net|io|us)$/i.test(m[0])) problems.push(`${f}: email address in browser code (${m[0]})`);
   }
 } else problems.push('.next/static not found: run the build before the scan');

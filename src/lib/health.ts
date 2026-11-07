@@ -58,17 +58,19 @@ export const failingChecks = (checks: Check[]) => checks.filter((c) => c.state =
 
 export type GoLiveFacts = {
   firstRunAck: boolean; ownerEmail: boolean; domain: boolean; selfTest: boolean; signupOff: boolean;
-  testLead: boolean; testAlert: boolean; testBackup: boolean; watchdog: boolean;
+  testLead: boolean; testAlert: boolean; testBackup: boolean; watchdog: boolean; backupWatchdog: boolean; allClear: boolean;
 };
 export const GOLIVE_ITEMS: { key: keyof GoLiveFacts; label: string }[] = [
   { key: 'firstRunAck', label: 'You read the costs and who should not use this' },
   { key: 'ownerEmail', label: 'Your alert email is set in Settings' },
   { key: 'domain', label: 'Sending domain is verified' },
   { key: 'selfTest', label: 'Logged-out read test passes' },
-  { key: 'signupOff', label: 'Public signup is off' },
+  { key: 'signupOff', label: 'Public signup is off (checked again when you press Finish)' },
   { key: 'testLead', label: 'Test lead went all the way through' },
   { key: 'testAlert', label: 'You confirmed a test alert reached you' },
   { key: 'testBackup', label: 'A test backup finished and was checked' },
   { key: 'watchdog', label: 'Outside watchdog received a check-in' },
+  { key: 'backupWatchdog', label: 'The backup reports to its own outside check (HEALTHCHECK_BACKUP_URL)' },
+  { key: 'allClear', label: 'The daily all-clear email is on (Settings)' },
 ];
 export const goLiveReady = (f: GoLiveFacts) => GOLIVE_ITEMS.every((i) => f[i.key]);

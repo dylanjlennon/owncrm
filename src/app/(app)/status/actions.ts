@@ -10,8 +10,7 @@ import { runFakeLead } from '@/lib/fakelead';
 import { getSettings } from '@/lib/settings';
 import { sendAlert } from '@/lib/alerts';
 import { emailAdapter } from '@/lib/email';
-import { goLiveReady } from '@/lib/health';
-import { goLiveFacts } from '@/lib/golive';
+import { finishGoLive } from '@/lib/golive';
 
 const done = (code: string): never => { revalidatePath('/', 'layout'); redirect(`/status?msg=${code}`); };
 
@@ -59,8 +58,6 @@ export async function resumeSending() {
 }
 export async function completeGoLive() {
   const { db } = await requireOwner();
-  const facts = await goLiveFacts(db);
-  if (!goLiveReady(facts)) done('golive_blocked');
-  await db.from('app_settings').update({ golive_completed_at: new Date().toISOString() }).eq('id', true);
-  done('golive_done');
+  const r = await finishGoLive(db, () => runSelfTest(db, anonClient(), env.supabaseUrl(), env.supabaseAnonKey()));
+  done(r.done ? 'golive_done' : 'golive_blocked');
 }

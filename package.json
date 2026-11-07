@@ -4,7 +4,7 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
-    "node": ">=20.18"
+    "node": ">=22.13"
   },
   "scripts": {
     "dev": "next dev",
@@ -17,6 +17,7 @@
     "test:rls": "bash scripts/test-rls-local.sh",
     "test:rest": "node scripts/test-rest.mjs",
     "test:restore": "bash scripts/test-restore-local.sh",
+    "test:db": "bash scripts/test-db-local.sh",
     "e2e": "NODE_USE_ENV_PROXY=1 NODE_NO_WARNINGS=1 node e2e/run.mjs",
     "seed:demo": "node scripts/seed-demo.mjs",
     "backup": "node scripts/backup.mjs",

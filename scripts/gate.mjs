@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // npm run gate: everything that must pass before a change ships.
 // typecheck, lint, unit tests (app, contract, rescue), build, secret and client-data scan,
-// the access test on a blank local database, backup and restore test, and, when .env.local
+// the access test on a blank local database, database rules (upgrade, restore, alert gate),
+// backup and restore test, and, when .env.local
 // and test accounts exist, real HTTPS access checks against the test project.
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -13,6 +14,7 @@ const steps = [
   ['Build', 'npx', ['next', 'build']],
   ['Secret and client-data scan', 'node', ['scripts/scan-secrets.mjs']],
   ['Access test on a blank local database (all migrations replayed)', 'bash', ['scripts/test-rls-local.sh'], { skippable: true }],
+  ['Database rules on local Postgres (upgrade, restore, alert gate)', 'bash', ['scripts/test-db-local.sh'], { skippable: true }],
   ['Backup and restore-to-blank test', 'bash', ['scripts/test-restore-local.sh'], { skippable: true }],
   ['Access checks over HTTPS against the test project', 'node', ['scripts/test-rest.mjs'], { needs: ['.env.local', '.e2e/accounts.json'] }],
 ];

@@ -1,24 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { securityHeaderValues } from '@/lib/csp';
 
 // Public paths. Everything else needs the owner's session with a second factor.
 const PUBLIC = [/^\/login$/, /^\/lead\//, /^\/u$/, /^\/r\//, /^\/api\/(lead|inbound|webhooks|cron|backup-report|history\/upload|unsubscribe|r)\b/];
 const SESSION_ONLY = [/^\/mfa$/];
 
-function securityHeaders(res: NextResponse, nonce: string, isApi: boolean) {
-  const csp = [
-    "default-src 'self'", `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`, "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:", "font-src 'self'", "connect-src 'self'", "frame-ancestors 'none'", "form-action 'self'",
-    "base-uri 'none'", "object-src 'none'",
-  ].join('; ');
-  res.headers.set('Content-Security-Policy', csp);
-  res.headers.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  res.headers.set('X-Frame-Options', 'DENY');
-  res.headers.set('X-Content-Type-Options', 'nosniff');
-  res.headers.set('Referrer-Policy', 'no-referrer');
-  res.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
-  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
-  res.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+function securityHeaders(res: NextResponse, nonce: string, isApi: boolean, path: string) {
+  for (const [k, v] of Object.entries(securityHeaderValues(path, nonce, process.env.LEAD_FORM_FRAME_ANCESTORS))) res.headers.set(k, v);
   if (isApi || !res.headers.get('Cache-Control')) res.headers.set('Cache-Control', 'private, no-store, max-age=0');
   return res;
 }
@@ -29,11 +18,11 @@ export async function middleware(req: NextRequest) {
   const reqHeaders = new Headers(req.headers);
   reqHeaders.set('x-nonce', nonce);
   reqHeaders.set('x-pathname', path);
-  reqHeaders.set('Content-Security-Policy', `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`);
+  reqHeaders.set('Content-Security-Policy', `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'; style-src 'self' 'nonce-${nonce}'`);
   const isApi = path.startsWith('/api/');
 
   if (PUBLIC.some((re) => re.test(path))) {
-    return securityHeaders(NextResponse.next({ request: { headers: reqHeaders } }), nonce, isApi);
+    return securityHeaders(NextResponse.next({ request: { headers: reqHeaders } }), nonce, isApi, path);
   }
 
   let res = NextResponse.next({ request: { headers: reqHeaders } });
@@ -53,14 +42,14 @@ export async function middleware(req: NextRequest) {
   const redirectTo = (to: string) => {
     const r = NextResponse.redirect(new URL(to, req.url), 303);
     for (const c of res.cookies.getAll()) r.cookies.set(c);
-    return securityHeaders(r, nonce, isApi);
+    return securityHeaders(r, nonce, isApi, path);
   };
-  if (!user) return isApi ? securityHeaders(NextResponse.json({ error: 'Log in first' }, { status: 401 }), nonce, true) : redirectTo('/login');
+  if (!user) return isApi ? securityHeaders(NextResponse.json({ error: 'Log in first' }, { status: 401 }), nonce, true, path) : redirectTo('/login');
   if (!SESSION_ONLY.some((re) => re.test(path))) {
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (aal?.currentLevel !== 'aal2') return isApi ? securityHeaders(NextResponse.json({ error: 'Second factor required' }, { status: 401 }), nonce, true) : redirectTo('/mfa');
+    if (aal?.currentLevel !== 'aal2') return isApi ? securityHeaders(NextResponse.json({ error: 'Second factor required' }, { status: 401 }), nonce, true, path) : redirectTo('/mfa');
   }
-  return securityHeaders(res, nonce, isApi);
+  return securityHeaders(res, nonce, isApi, path);
 }
 
 // Node runtime, so settings are read when the server starts, not frozen in at build time.

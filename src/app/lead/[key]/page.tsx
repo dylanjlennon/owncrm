@@ -20,10 +20,10 @@ export default async function LeadForm({ params, searchParams }: { params: Promi
       <form method="post" action="/api/lead" className="stack panel">
         <input type="hidden" name="key" value={key} />
         <input type="hidden" name="source" value={source} />
-        <div aria-hidden="true" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }}>
+        <div className="u-offscreen" aria-hidden="true">
           <label>Leave this empty<input name="website" tabIndex={-1} autoComplete="off" /></label>
         </div>
-        <div className="row"><label style={{ flex: 1 }}>First name<input name="first_name" required maxLength={100} autoComplete="given-name" /></label><label style={{ flex: 1 }}>Last name<input name="last_name" maxLength={100} autoComplete="family-name" /></label></div>
+        <div className="row"><label className="u-grow">First name<input name="first_name" required maxLength={100} autoComplete="given-name" /></label><label className="u-grow">Last name<input name="last_name" maxLength={100} autoComplete="family-name" /></label></div>
         <label>Email<input name="email" type="email" maxLength={320} autoComplete="email" /></label>
         <label>Phone<input name="phone" type="tel" maxLength={40} autoComplete="tel" /></label>
         <label>Message<textarea name="message" maxLength={2000} /></label>

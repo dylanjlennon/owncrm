@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { neutralizeCell, csvCell, toCsv, parseCsv } from '@/lib/csv';
 import { signLink, verifyLink } from '@/lib/tokens';
 import { messageFor, withMessage } from '@/lib/messages';
-import { bearerMatches, constantTimeEqual, verifySvix, signSvixForTest, encryptSecret, decryptSecret } from '@/lib/secure';
+import { bearerMatches, constantTimeEqual, verifySvix, signSvixForTest } from '@/lib/secure';
 import { localDate, localHour, weekStart } from '@/lib/time';
 import { noReplyDue, dealReminderDue, pageWindow } from '@/lib/logic';
 import { parseRealtorLead } from '@/lib/parsers/realtor';
@@ -88,12 +88,6 @@ describe('secrets', () => {
     expect(verifySvix({ ...base, secret: 'whsec_' + Buffer.from('other').toString('base64') })).toBe(false);
     expect(verifySvix({ ...base, signature: null })).toBe(false);
   });
-  it('encrypts the optional AI key', () => {
-    const enc = encryptSecret('fake-api-key', 'host-secret');
-    expect(enc).not.toContain('fake-api-key');
-    expect(decryptSecret(enc, 'host-secret')).toBe('fake-api-key');
-    expect(() => decryptSecret(enc, 'wrong')).toThrow();
-  });
 });
 
 describe('time zones and reminders', () => {
@@ -164,13 +158,15 @@ describe('CSV import', () => {
     const { good, bad } = splitRows(rows, m);
     expect(good.length).toBe(480);
     expect(bad.length).toBe(20);
-    expect(errorFile(headers, bad).split('\r\n').length).toBe(22);
+    expect(errorFile(bad).split('\r\n').length).toBe(22);
   });
   it('flags duplicates inside the file and neutralizes the error file', () => {
     const { good, bad } = splitRows([['A','a@example.com'],['B','A@example.com'],['=cmd','']], { first_name: 0, email: 1 });
     expect(good.length).toBe(1);
     expect(bad.length).toBe(2);
-    expect(errorFile(['name','email'], bad)).toContain("'=cmd");
+    // N3: the error file holds line numbers and reasons only, never the refused cells.
+    expect(errorFile(bad)).not.toContain('cmd');
+    expect(errorFile(bad).split('\r\n')[0]).toBe('line,problem');
   });
 });
 

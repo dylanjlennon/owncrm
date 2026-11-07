@@ -11,7 +11,7 @@ export default async function NewContact({ searchParams }: { searchParams: Promi
       <h1>Add a contact</h1>
       <Flash code={sp.msg} />
       <form action={createContact} className="stack panel">
-        <div className="row"><label style={{ flex: 1 }}>First name<input name="first_name" required maxLength={100} /></label><label style={{ flex: 1 }}>Last name<input name="last_name" maxLength={100} /></label></div>
+        <div className="row"><label className="u-grow">First name<input name="first_name" required maxLength={100} /></label><label className="u-grow">Last name<input name="last_name" maxLength={100} /></label></div>
         <label>Email<input name="email" type="email" maxLength={320} /></label>
         <label>Phone<input name="phone" type="tel" maxLength={40} /></label>
         <label>Stage<select name="stage" defaultValue="new lead">{STAGES.map((s) => <option key={s}>{s}</option>)}</select></label>
@@ -23,7 +23,7 @@ export default async function NewContact({ searchParams }: { searchParams: Promi
           <label>How and when they agreed<input name="consent_source" maxLength={300} placeholder="Signed open house sheet, Nov 6" /></label>
           <label>Exact wording they agreed to, if any<input name="consent_wording" maxLength={1000} /></label>
         </fieldset>
-        <div className="row"><label>First follow-up<input name="followup_on" type="date" /></label><label style={{ flex: 1 }}>What to do<input name="followup_title" maxLength={300} placeholder="Call back" /></label></div>
+        <div className="row"><label>First follow-up<input name="followup_on" type="date" /></label><label className="u-grow">What to do<input name="followup_title" maxLength={300} placeholder="Call back" /></label></div>
         <button type="submit">Add contact</button>
       </form>
     </>

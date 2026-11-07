@@ -3,6 +3,7 @@ import { getSettings } from '@/lib/settings';
 import { formatDateTime } from '@/lib/time';
 import { ZILLOW_NOTICE } from '@/lib/config';
 import { Flash } from '@/components/Flash';
+import { htmlToText } from '@/lib/html-text';
 import { leadFromReview, resolveReview } from './actions';
 
 export default async function Review({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -22,18 +23,18 @@ export default async function Review({ searchParams }: { searchParams: Promise<R
           <h3>{e.subject || '(no subject)'}</h3>
           <p className="muted">From {e.from_address || 'unknown'}, {formatDateTime(e.received_at, s.timezone)}. Why it is here: {e.review_reason}</p>
           {/* Shown as plain text only. Email HTML is never rendered in the app. */}
-          <pre style={{ whiteSpace: 'pre-wrap', maxHeight: 260, overflow: 'auto', background: '#f0f3f1', padding: 10 }}>{(e.text_body || (e.html_body || '').replace(/<[^>]+>/g, ' ')).slice(0, 5000)}</pre>
+          <pre className="u-pre">{(e.text_body ? String(e.text_body).slice(0, 5000) : htmlToText(e.html_body, 20_000)).slice(0, 5000)}</pre>
           {e.body_truncated && <p className="muted">This email was very long. The first part is saved.</p>}
           <form action={leadFromReview} className="row">
             <input type="hidden" name="id" value={e.id} />
-            <input name="first_name" placeholder="First name" aria-label="First name" maxLength={100} style={{ width: 'auto', flex: '1 1 120px' }} />
-            <input name="last_name" placeholder="Last name" aria-label="Last name" maxLength={100} style={{ width: 'auto', flex: '1 1 120px' }} />
-            <input name="email" placeholder="Email" aria-label="Email" maxLength={320} style={{ width: 'auto', flex: '1 1 160px' }} />
-            <input name="phone" placeholder="Phone" aria-label="Phone" maxLength={40} style={{ width: 'auto', flex: '1 1 120px' }} />
-            <input name="source" placeholder="Source" aria-label="Source" defaultValue="Realtor.com" maxLength={80} style={{ width: 'auto', flex: '1 1 120px' }} />
+            <input className="u-w120" name="first_name" placeholder="First name" aria-label="First name" maxLength={100} />
+            <input className="u-w120" name="last_name" placeholder="Last name" aria-label="Last name" maxLength={100} />
+            <input className="u-w160" name="email" placeholder="Email" aria-label="Email" maxLength={320} />
+            <input className="u-w120" name="phone" placeholder="Phone" aria-label="Phone" maxLength={40} />
+            <input className="u-w120" name="source" placeholder="Source" aria-label="Source" defaultValue="Realtor.com" maxLength={80} />
             <button type="submit">Make lead</button>
           </form>
-          <form action={resolveReview} className="row" style={{ marginTop: 8 }}>
+          <form action={resolveReview} className="row u-mt8">
             <input type="hidden" name="id" value={e.id} />
             <button className="quiet" type="submit" name="status" value="resolved">Handled</button>
             <button className="quiet" type="submit" name="status" value="ignored">Not a lead</button>

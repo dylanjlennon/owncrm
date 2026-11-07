@@ -66,8 +66,26 @@ begin
       jsonb_build_object('name','anon cannot run intake','as','anon','sql','select public.intake_lead(''{"email":"a@example.com"}'')','expect','raises'),
       jsonb_build_object('name','anon cannot end sessions','as','anon','sql','select public.revoke_all_owner_sessions()','expect','raises'),
       jsonb_build_object('name','owner session cannot use the service-only function','as','owner','sql','select public.revoke_all_owner_sessions()','expect','raises'),
-      jsonb_build_object('name','owner cannot read the encrypted AI key','as','owner','sql','select ciphertext from public.app_secrets','expect','raises'),
+      jsonb_build_object('name','there is no table for AI keys or logins','as','owner','sql','select count(*) from information_schema.tables where table_schema = ''public'' and (table_name ~ ''secret'' or table_name ~ ''ai_'')','expect','value:0'),
       jsonb_build_object('name','service key runs intake','as','service','sql','select (public.intake_lead(''{"email":"svc-lead@example.com","first_name":"Svc","source":"test"}'')->>''created'')','expect','value:true'),
+      -- M1: utility functions answer only the owner (with a second factor) and the server.
+      jsonb_build_object('name','non-owner cannot list tables','as','nonowner','sql','select count(*) from public.list_app_tables()','expect','value:0'),
+      jsonb_build_object('name','owner without aal2 cannot list tables','as','owner_aal1','sql','select count(*) from public.list_app_tables()','expect','value:0'),
+      jsonb_build_object('name','owner lists tables','as','owner','sql','select count(*) from public.list_app_tables()','expect','positive'),
+      jsonb_build_object('name','service key lists tables','as','service','sql','select count(*) from public.list_app_tables()','expect','positive'),
+      jsonb_build_object('name','non-owner cannot read the database size','as','nonowner','sql','select coalesce(public.db_size_bytes(), 0)','expect','value:0'),
+      jsonb_build_object('name','owner reads the database size','as','owner','sql','select public.db_size_bytes()','expect','positive'),
+      jsonb_build_object('name','non-owner gets no local date','as','nonowner','sql','select coalesce(public.local_today()::text, ''none'')','expect','value:none'),
+      jsonb_build_object('name','owner gets the local date','as','owner','sql','select (public.local_today() is not null)::text','expect','value:true'),
+      jsonb_build_object('name','non-owner cannot run cleanup','as','nonowner','sql','select public.run_hygiene()','expect','raises:not_owner'),
+      jsonb_build_object('name','anon cannot ask for an alert','as','anon','sql','select public.alert_admit(''system'', array[''owner@example.com''], ''s'', ''b'')','expect','raises'),
+      jsonb_build_object('name','non-owner cannot ask for an alert','as','nonowner','sql','select public.alert_admit(''system'', array[''owner@example.com''], ''s'', ''b'')','expect','raises:not_owner'),
+      jsonb_build_object('name','the alert decision takes the send lock','as','service','sql','select (pg_get_functiondef(''public.alert_admit''::regproc) like ''%pg_advisory_xact_lock(7314001)%'')::text','expect','value:true'),
+      jsonb_build_object('name','owner without aal2 cannot run cleanup','as','owner_aal1','sql','select public.run_hygiene()','expect','raises:not_owner'),
+      jsonb_build_object('name','non-owner cannot use the rate limiter','as','nonowner','sql','select public.hit_rate_limit(''x'', 5, 60)','expect','raises:not_owner'),
+      jsonb_build_object('name','service key uses the rate limiter','as','service','sql','select public.hit_rate_limit(''rls-x'', 5, 60)::text','expect','value:true'),
+      -- Blue #2: the daily all-clear is on by default.
+      jsonb_build_object('name','daily all-clear is on by default','as','owner','sql','select all_clear_enabled::text from public.app_settings','expect','value:true'),
       -- Suppression can't be bypassed.
       jsonb_build_object('name','owner cannot send to a suppressed address','as','owner','sql',format('insert into public.outbound_emails (household_id,to_address,subject,body_text,kind) values (%L,''blocked-rls@example.com'',''s'',''b'',''one_to_one'')',v_hh),'expect','raises:blocked_suppressed'),
       jsonb_build_object('name','mixed case and spaces do not get past it','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''  BLOCKED-rls@EXAMPLE.com '',''s'',''b'',''one_to_one'')','expect','raises:blocked_suppressed'),
@@ -105,7 +123,21 @@ begin
       -- Reserved alert budget.
       jsonb_build_object('name','set a tiny email budget','as','owner','sql','update public.app_settings set daily_email_cap = 3, reserved_alert_budget = 2 returning 1','expect','positive'),
       jsonb_build_object('name','client mail cannot eat the alert budget','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'')','expect','raises:blocked_budget'),
-      jsonb_build_object('name','alerts can still use the reserve','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'') returning 1','expect','positive'),
+      jsonb_build_object('name','the last alert of the day is held for escalations','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'') returning 1','expect','raises:blocked_alert_budget'),
+      jsonb_build_object('name','alerts can still use the reserve','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind,alert_class) values (''owner@example.com'',''s'',''b'',''alert'',''critical'') returning 1','expect','positive'),
+      -- M2: alerts have a hard daily ceiling (reserved_alert_budget = 2, and two alerts went today).
+      jsonb_build_object('name','alerts stop at the daily alert ceiling','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'')','expect','raises:blocked_alert_budget'),
+      -- N6: alerts no longer count against client email (cap 4, reserve 2: two client emails a day).
+      jsonb_build_object('name','alerts do not eat client email','as','owner','sql','update public.app_settings set daily_email_cap = 4 returning 1','expect','positive'),
+      jsonb_build_object('name','second client email fits after two alerts','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'') returning 1','expect','positive'),
+      jsonb_build_object('name','client email stops at cap minus the alert reserve','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'')','expect','raises:blocked_budget'),
+      jsonb_build_object('name','daily cap must be above the alert reserve','as','owner','sql','update public.app_settings set daily_email_cap = 2 returning 1','expect','raises'),
+      -- N9: birthdays are month and day only, in the database too.
+      jsonb_build_object('name','a birthday with a year is refused','as','owner','sql',format('insert into public.people (household_id, first_name, birthday) values (%L, ''Testy'', ''1961-04-02'') returning 1',v_hh),'expect','raises'),
+      jsonb_build_object('name','a month-and-day birthday is accepted','as','owner','sql',format('insert into public.people (household_id, first_name, birthday) values (%L, ''Testy'', ''2000-04-02'') returning 1',v_hh),'expect','positive'),
+      jsonb_build_object('name','restore helpers are not callable by the app','as','owner','sql','select private.restore_begin()','expect','raises'),
+      -- N12: the alert ceiling is checked under a lock.
+      jsonb_build_object('name','alert ceiling is serialized','as','service','sql','select (pg_get_functiondef(''private.outbound_guard''::regproc) like ''%pg_advisory_xact_lock%'')::text','expect','value:true'),
       -- Revocation must be proven on the same run.
       jsonb_build_object('name','end all sessions','as','service','sql','select public.revoke_all_owner_sessions() is not null','expect','value:true')
     );

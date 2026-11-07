@@ -19,6 +19,7 @@ export default async function Status({ searchParams }: { searchParams: Promise<R
     db.from('outbound_emails').select('sent_at').not('sent_at', 'is', null).order('sent_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
   const built = process.env.OWNCRM_BUILT_AT;
+  const nextVersion = process.env.OWNCRM_NEXT_VERSION;
   const updateAge = days(built);
   const drillAge = days(s.last_restore_drill_at);
   return (
@@ -37,11 +38,11 @@ export default async function Status({ searchParams }: { searchParams: Promise<R
               <td><span className={`tag ${c.state === 'ok' ? 'ok' : c.state === 'fail' ? 'bad' : ''}`}>{c.state === 'ok' ? 'Working' : c.state === 'fail' ? 'Broken' : 'Not set up'}</span></td>
               <td>{formatDateTime(c.lastSuccessAt, s.timezone)}</td><td>{c.detail}</td></tr>
           ))}
-          <tr><td>Code update</td><td><span className={`tag ${updateAge !== null && updateAge > 45 ? 'warn' : 'ok'}`}>{updateAge === null ? 'Unknown' : `${updateAge} days ago`}</span></td><td>{formatDateTime(built, s.timezone)}</td><td>Check for security updates at least monthly. See HOW-TO.md.</td></tr>
+          <tr data-testid="check-deploy"><td>Last deploy</td><td><span className={`tag ${updateAge !== null && updateAge > 45 ? 'warn' : 'ok'}`}>{updateAge === null ? 'Unknown' : `${updateAge} days ago`}</span></td><td>{formatDateTime(built, s.timezone)}</td><td>When this copy of the app was built{nextVersion ? `, with Next.js ${nextVersion}` : ''}. Any redeploy resets it, even a settings change, so it does not prove your packages are up to date. Do the monthly check-up in HOW-TO.md.</td></tr>
           <tr><td>Last restore drill</td><td><span className={`tag ${drillAge === null || drillAge > 90 ? 'warn' : 'ok'}`}>{drillAge === null ? 'Never' : `${drillAge} days ago`}</span></td><td>{formatDateTime(s.last_restore_drill_at, s.timezone)}</td><td>A backup only counts once you have restored it. Follow RESTORE.md every 3 months.</td></tr>
         </tbody>
       </table></div>
-      <div className="row" style={{ marginTop: 12 }}>
+      <div className="row u-mt12">
         <form action={selfTestNow}><button className="quiet" type="submit">Run logged-out read test</button></form>
         <form action={testLeadNow}><button className="quiet" type="submit">Send a test lead</button></form>
         <form action={domainCheckNow}><button className="quiet" type="submit">Check sending domain</button></form>

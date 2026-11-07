@@ -10,7 +10,7 @@ export default async function Welcome({ searchParams }: { searchParams: Promise<
   await requireOwner();
   const sp = await searchParams;
   return (
-    <main style={{ margin: '0 auto' }}>
+    <main className="u-mauto">
       <h1>Before you start with {APP_NAME}</h1>
       <Flash code={sp.msg} />
       <h2>Who should not use this</h2>
