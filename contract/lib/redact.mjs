@@ -65,12 +65,13 @@ const RULES = [
   // SSN shapes: 123-45-6789, 123.45.6789, 123 45 6789, 123/45/6789, 123_45_6789, 123-456-789,
   // 123 456 789, and with a space around the dash as typed by hand: 123 - 45 - 6789, 123 -45- 6789
   // (review round 4, L3). Each separator is one character, with at most one space either side.
-  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}(?: ?[-./_] ?|\s)\d{2}(?: ?[-./_] ?|\s)\d{4}${END}`, 'g') },
+  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}(?: ?[-./_]{1,2} ?|\s)\d{2}(?: ?[-./_]{1,2} ?|\s)\d{4}${END}`, 'g') },
   { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}( ?[-._] ?|\s)\d{3}\1\d{3}${END}`, 'g') },
-  // With the word: "SSN 123456789", "ss# 12345 6789", "SSN: 123 456789", "social security
-  // number: 123-45-6789". The 5+4 and 3+6 shapes are checked only next to the word: on their own
+  // With the word: any 9 digits in any grouping, each split by up to two spaces, dashes, dots,
+  // commas or underscores: "SSN 123456789", "ss# 12345 6789", "SSN: 123 456789", "SSN 123,45,6789",
+  // "my ssn is 1 2 3 4 5 6 7 8 9". Shapes like 5+4 are checked only next to the word: on their own
   // they are a zip code and a year ("NC 28801 2019 build").
-  { name: 'SSN', re: new RegExp(String.raw`\b(?:ssn|ss#|social security(?: number| no\.?)?)${SEP}(?:is${SEP})?(?:\d{3}[-_.\s]?\d{2}[-_.\s]?\d{4}|\d{3}[-_.\s]\d{6}|\d{5}[-_.\s]\d{4})(?!\d)`, 'gi') },
+  { name: 'SSN', re: new RegExp(String.raw`\b(?:ssn|ss#|social security(?: number| no\.?)?)${SEP}(?:is${SEP})?(?:\d[-_.,\s]{0,2}){8}\d(?!\d)`, 'gi') },
   { name: 'tax id', re: new RegExp(String.raw`\b(?:ein|tin|itin|tax\s?id)\b${SEP}(?:(?:no\.?|number)${SEP})?\d{2}-?\d{7}(?!\d)`, 'gi') },
   { name: 'passport number', re: new RegExp(String.raw`\bpassport${SEP}(?:(?:no\.?|number)${SEP})?[A-Z0-9]{6,9}\b`, 'gi') },
   // Cards: 13 to 19 digits, in groups split by single spaces, hyphens, dots or underscores.

@@ -246,6 +246,8 @@ export const ROUND4_MUST_REFUSE = [
   'Dialysis Center Dr Patel said no stairs',
   'Surgery St Joseph next week',
   'Their house is in foreclosure',
+  'Wife in full rehab program until March',
+  'No foreclosure yet but 3 payments behind',
 ];
 describe('L2 round 4: the real estate exceptions are narrower', () => {
   it.each(ROUND4_MUST_REFUSE)('refuses "%s"', (t) => {
@@ -268,6 +270,7 @@ describe('L3 round 4: spaced-dash SSNs, grouped account numbers, cards with dots
     '123 - 45 - 6789', '123 -45- 6789', '123- 45 -6789', 'SSN: 123 456789', 'SSN 123_45_6789', '123_45_6789', '123 - 456 - 789',
     'acct 1234-5678-9012', 'account 1234 5678 9012', 'Account no. 12 3456 7890', 'a/c 9876-543210',
     '4111.1111.1111.1111', '4111_1111_1111_1111', '4111 1111 1111 1111', '4111-1111-1111-1111',
+    '123--45--6789', 'SSN 12 345 6789', 'SSN 123,45,6789', 'my ssn is 1 2 3 4 5 6 7 8 9',
   ])('catches "%s"', (t) => {
     expect(containsSensitive(t)).toBe(true);
   });

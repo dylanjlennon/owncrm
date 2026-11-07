@@ -114,6 +114,8 @@ const REHAB_BEFORE = /\b(?:full|complete|gut|light|heavy|total|cosmetic|major|mi
 const REHAB_AFTER = /^\s+(?:needed|required|projects?|loans?|work|candidates?|specials?|propert(?:y|ies)|homes?|houses?|deals?|listings?)\b/i;
 // "Rehab costs", "rehab budget": only with a house word near it ("kitchen rehab costs").
 const REHAB_COST_AFTER = /^\s+(?:costs?|budgets?|estimates?)\b/i;
+// "Rehab" followed by these is a person's treatment, whatever comes before ("full rehab program").
+const REHAB_PERSON_AFTER = /^\s+(?:programs?|centers?|centres?|facilit(?:y|ies)|stays?|treatment|clinics?|patients?|visits?)\b/i;
 const HOUSE_WORD = /\b(?:house|home|property|kitchen|roof|bath(?:room)?s?|unit|condo|duplex|listing|flip|floors?|basement|deck|siding)\b/i;
 
 /** True when the match at index i is one of the allowed real estate uses above. */
@@ -126,8 +128,10 @@ function allowedUse(/** @type {string} */ t, /** @type {number} */ i, /** @type 
   if (/^strokes?$/i.test(word) && /^\s+of\b/i.test(after)) return true;
   if (/^heart attacks?$/i.test(word) && /\b(?:gave|give|gives|giving)\s+(?:me|him|her|us|you|them)\s+an?\s+$/i.test(before)) return true;
   if (/^bankrupt/i.test(word)) return NEGATED_BEFORE_STRICT.test(before);
-  if (NEGATED.test(word) && NEGATED_BEFORE.test(before)) return true;
+  // "No foreclosure yet" is not a clean disclosure.
+  if (NEGATED.test(word) && NEGATED_BEFORE.test(before) && !/^\s+yet\b/i.test(after)) return true;
   if (/^foreclos/i.test(word) && (FORECLOSURE_AFTER.test(after) || FORECLOSURE_BEFORE.test(before))) return true;
+  if (/^rehab$/i.test(word) && REHAB_PERSON_AFTER.test(after)) return false;
   if (/^rehab$/i.test(word) && (REHAB_BEFORE.test(before) || REHAB_AFTER.test(after)
     || (REHAB_COST_AFTER.test(after) && (HOUSE_WORD.test(before) || HOUSE_WORD.test(after))))) return true;
   if (/^rehabb(?:ed|ing)$/i.test(word)) return true;
