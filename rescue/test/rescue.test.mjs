@@ -78,7 +78,7 @@ describe('scope, AI input and the prompt-injection test', () => {
   beforeAll(async () => {
     await run(['aggregate', '--work', work], quiet);
     candidates = JSON.parse(readFileSync(join(work, 'candidates.json'), 'utf8'));
-    aiInput = readFileSync(join(work, 'for-ai', 'candidates-for-review.json'), 'utf8');
+    aiInput = readdirSync(join(work, 'for-ai')).filter((f) => f.startsWith('batch-')).map((f) => readFileSync(join(work, 'for-ai', f), 'utf8')).join('\n');
   });
   const find = (email) => candidates.find((c) => c.handles.some((h) => h.value === email));
   it('merges one person across sources by email and phone', () => {
@@ -156,5 +156,36 @@ describe('review, build, check, upload dry run', () => {
   it('the review sheet keeps owner decisions: review refuses to overwrite', async () => {
     await expect(run(['review', '--work', work], quiet)).rejects.toThrow(/already exists/);
     expect(existsSync(join(work, 'review.csv'))).toBe(true);
+  });
+});
+
+describe('AI input comes in batches one session can handle', () => {
+  it('splits many candidates into batch files and merges per-batch judgments', async () => {
+    const base = mkdtempSync(join(tmpdir(), 'batch-test-'));
+    const w = join(base, 'work');
+    await run(['init', '--work', w], quiet);
+    writeFileSync(join(w, 'config.json'), JSON.stringify({ me: ['me@example.com'] }));
+    const lines = [];
+    for (let i = 0; i < 250; i++) {
+      lines.push(`From sender${i}@example.com Mon Jan  5 10:00:00 2026`, `From: Buyer${i} Example <buyer${i}@example.com>`, 'To: me@example.com',
+        'Date: Mon, 5 Jan 2026 10:00:00 +0000', `Message-ID: <m${i}@example.com>`, 'Subject: The house on Elm', '', 'Can we schedule a showing and talk about an offer?', '');
+    }
+    writeFileSync(join(base, 'big.mbox'), lines.join('\n'));
+    await run(['extract', '--work', w, '--source', 'gmail_mbox', '--input', join(base, 'big.mbox')], quiet);
+    const r = await run(['aggregate', '--work', w, '--batch-size', '100'], quiet);
+    expect(r.inScope).toBeGreaterThan(200);
+    const batches = readdirSync(join(w, 'for-ai')).filter((f) => /^batch-\d+\.json$/.test(f)).sort();
+    expect(batches.length).toBe(Math.ceil(r.inScope / 100));
+    for (const b of batches) expect(JSON.parse(readFileSync(join(w, 'for-ai', b), 'utf8')).candidates.length).toBeLessThanOrEqual(100);
+    const index = JSON.parse(readFileSync(join(w, 'for-ai', 'candidates-for-review.json'), 'utf8'));
+    expect(index.batches).toEqual(batches);
+    expect(index.candidates).toBeUndefined();
+    const ids = batches.map((b) => JSON.parse(readFileSync(join(w, 'for-ai', b), 'utf8')).candidates[0].candidate_id);
+    writeFileSync(join(w, 'judgments-001.json'), JSON.stringify([{ candidate_id: ids[0], summary: 'Asked about a showing' }]));
+    writeFileSync(join(w, 'judgments-002.json'), JSON.stringify([{ candidate_id: ids[1], summary: 'Talked about an offer' }]));
+    await run(['review', '--work', w], quiet);
+    const sheet = readFileSync(join(w, 'review.csv'), 'utf8');
+    expect(sheet).toContain('Asked about a showing');
+    expect(sheet).toContain('Talked about an offer');
   });
 });
