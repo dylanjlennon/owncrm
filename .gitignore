@@ -12,3 +12,6 @@ coverage/
 .DS_Store
 backups/
 rescue/.work/
+
+# Local review reports (they name the test project; never publish)
+docs/review/
