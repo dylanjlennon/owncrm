@@ -3,10 +3,10 @@
 // Everything here is deterministic. The AI judgment step is a separate file the agent writes.
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { hash, normalizeHandle, inRange } from './util.mjs';
+import { letterId, normalizeHandle, inRange } from './util.mjs';
 import { toCsv, parseCsv } from '../../contract/lib/csv.mjs';
-import { SUGGESTED_STAGES, mentionsProtectedTrait, looksLikeInstructions, mentionsHealthOrLegal } from '../../contract/lib/policy.mjs';
-import { containsSensitive } from '../../contract/lib/redact.mjs';
+import { SUGGESTED_STAGES, protectedTraitMatch, instructionMatch, healthOrLegalMatch } from '../../contract/lib/policy.mjs';
+import { redact } from '../../contract/lib/redact.mjs';
 import { CONTRACT_VERSION } from '../../contract/lib/validate.mjs';
 
 /** @param {string} work */
@@ -49,6 +49,20 @@ export function suggest(c, now) {
 }
 
 /**
+ * True when any email, phone, email domain or name is on the owner's block list.
+ * @param {{kind: string, value: string}[]} handles @param {(string|null)[]} names @param {string[]} blocklist
+ */
+export function isBlocked(handles, names, blocklist) {
+  return handles.some((h) => {
+    const v = h.value.toLowerCase();
+    return blocklist.includes(v) || blocklist.includes(normalizeHandle(h.kind, v)) || (h.kind === 'email' && blocklist.includes(`@${v.split('@')[1]}`));
+  }) || names.some((n) => !!n && blocklist.includes(n.toLowerCase()));
+}
+
+export const BLOCKED_REASON = 'On your block list';
+export const MIXED_REASON = (/** @type {string} */ topic) => `Mixed with a personal topic (${topic}). Not summarized. Approve by hand if this is a client: type yes in decision and they come in with no summary.`;
+
+/**
  * Groups records into people by shared email or phone, then decides what is in scope.
  * @param {any[]} records @param {{ me: string[], blocklist: string[], since: string|null, until: string|null, now?: Date }} cfg
  */
@@ -64,7 +78,7 @@ export function aggregate(records, cfg) {
     if (!keys.length) continue;
     if (r.handles.every((/** @type {any} */ h) => cfg.me.includes(h.value.toLowerCase()))) continue;
     let gid = keys.map((/** @type {string} */ k) => handleToGroup.get(k)).find(Boolean);
-    if (!gid) { gid = hash(keys[0]); groups.set(gid, { id: gid, handles: new Map(), names: new Map(), records: [] }); }
+    if (!gid) { gid = letterId(keys[0]); groups.set(gid, { id: gid, handles: new Map(), names: new Map(), records: [] }); }
     const g = groups.get(gid);
     for (const h of r.handles) {
       const k = `${h.kind}:${normalizeHandle(h.kind, h.value)}`;
@@ -73,10 +87,7 @@ export function aggregate(records, cfg) {
     if (r.name && !/^me$/i.test(r.name)) g.names.set(r.name, (g.names.get(r.name) ?? 0) + 1);
     g.records.push(r);
   }
-  const blocked = (/** @type {any} */ g) => [...g.handles.values()].some((h) => {
-    const v = h.value.toLowerCase();
-    return cfg.blocklist.includes(v) || cfg.blocklist.includes(normalizeHandle(h.kind, v)) || (h.kind === 'email' && cfg.blocklist.includes(`@${v.split('@')[1]}`));
-  }) || [...g.names.keys()].some((n) => cfg.blocklist.includes(n.toLowerCase()));
+  const blocked = (/** @type {any} */ g) => isBlocked([...g.handles.values()], [...g.names.keys()], cfg.blocklist);
   const automated = /^(no-?reply|noreply|donotreply|notifications?|alerts?|mailer-daemon|bounce|news(letter)?)@/i;
 
   return [...groups.values()].map((g) => {
@@ -87,10 +98,10 @@ export function aggregate(records, cfg) {
     const sensitive = ['medical', 'legal', 'family'].find((t) => topics.includes(t));
     let scope = 'in';
     let reason = 'Real estate conversation found';
-    if (blocked(g)) { scope = 'out'; reason = 'On your block list'; }
+    if (blocked(g)) { scope = 'out'; reason = BLOCKED_REASON; }
     else if ([...g.handles.values()].some((h) => h.kind === 'email' && automated.test(h.value))) { scope = 'out'; reason = 'Automated sender'; }
     else if (sensitive && reCount === 0) { scope = 'out'; reason = `Personal topic (${sensitive}). Not summarized.`; }
-    else if (sensitive) { scope = 'out'; reason = `Mixed with a personal topic (${sensitive}). Not summarized. Approve by hand if this is a client.`; }
+    else if (sensitive) { scope = 'out'; reason = MIXED_REASON(sensitive); }
     else if (!strongEvidence && reCount === 0) { scope = 'out'; reason = 'No real estate conversation found'; }
     else if (strongEvidence && reCount === 0) reason = 'From your contacts or records';
     const name = [...g.names.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -140,6 +151,32 @@ export function forAi(candidates, records) {
   }));
 }
 
+/**
+ * Why a judgment's text is refused, in plain words, naming the field, the rule and the word it
+ * matched. Null when nothing is refused. A matched account or ID number is never repeated: only
+ * the kind of number is named.
+ * @param {any} j
+ * @returns {string | null}
+ */
+export function refusalReason(j) {
+  const fields = /** @type {const} */ (['display_name', 'summary', 'suggested_next_step', 'why']);
+  for (const f of fields) {
+    const v = typeof j[f] === 'string' ? j[f] : '';
+    if (!v) continue;
+    const hits = redact(v).hits;
+    if (hits.length) return `refused: the ${f} holds what looks like a ${hits[0]}. Take it out.`;
+    const hl = healthOrLegalMatch(v);
+    if (hl) return `refused: the word "${hl}" in the ${f} is on the health and legal list. Rewrite the ${f} without it.`;
+    if (f !== 'display_name') {
+      const pt = protectedTraitMatch(v);
+      if (pt) return `refused: the word "${pt}" in the ${f} is on the list of words about who someone is (race, religion, age, family and similar). Rewrite the ${f} without it.`;
+    }
+    const ins = instructionMatch(v);
+    if (ins) return `refused: the ${f} reads like an instruction ("${ins}"). Rewrite it as a plain summary.`;
+  }
+  return null;
+}
+
 const JUDGMENT_KEYS = ['candidate_id', 'include', 'merge_with', 'display_name', 'summary', 'suggested_stage', 'suggested_next_step', 'why'];
 
 /**
@@ -156,8 +193,8 @@ export function checkJudgments(raw, candidateIds) {
     if (!j || typeof j !== 'object' || !candidateIds.has(j.candidate_id)) { dropped.push(`unknown candidate ${String(j?.candidate_id).slice(0, 30)}`); continue; }
     const bad = Object.keys(j).filter((k) => !JUDGMENT_KEYS.includes(k));
     if (bad.length) { dropped.push(`${j.candidate_id}: unknown fields ${bad.join(',')}`); continue; }
-    const text = [j.display_name, j.summary, j.suggested_next_step, j.why].filter(Boolean).join('\n');
-    if (containsSensitive(text) || mentionsHealthOrLegal(text) || mentionsProtectedTrait([j.summary, j.why, j.suggested_next_step].join('\n')) || looksLikeInstructions(text)) { dropped.push(`${j.candidate_id}: refused text`); continue; }
+    const why = refusalReason(j);
+    if (why) { dropped.push(`${j.candidate_id}${j.display_name ? ` (${String(j.display_name).slice(0, 60)})` : ''}: ${why}`); continue; }
     if (j.suggested_stage && !SUGGESTED_STAGES.includes(j.suggested_stage)) { dropped.push(`${j.candidate_id}: unknown stage`); continue; }
     if (j.merge_with && !candidateIds.has(j.merge_with)) { dropped.push(`${j.candidate_id}: unknown merge target`); continue; }
     ok[j.candidate_id] = {
@@ -172,27 +209,51 @@ export function checkJudgments(raw, candidateIds) {
   return { ok, dropped };
 }
 
-const REVIEW_COLS = ['decision', 'candidate_id', 'display_name', 'emails', 'phones', 'in_scope', 'scope_reason', 'suggested_stage', 'suggested_next_step', 'summary', 'why', 'message_count', 'first_contact_on', 'last_contact_on', 'merge_with'];
+const REVIEW_COLS = ['decision', 'candidate_id', 'display_name', 'emails', 'phones', 'in_scope', 'scope_reason', 'what_to_do', 'suggested_stage', 'suggested_next_step', 'summary', 'why', 'message_count', 'first_contact_on', 'last_contact_on', 'merge_with'];
+
+/** The first row of the sheet: plain instructions, so the owner never has to look elsewhere. */
+export const README_ID = 'READ ME FIRST';
+export const README_TEXT = [
+  'How to use this sheet. Type the word yes in the decision column for each person to keep. Leave everyone else blank: blank means left out.',
+  'Rows with in_scope = no were left out by the tools (block list, automated sender, personal topic). They stay out unless you type yes. Never type yes on family, friends, doctors or lawyers.',
+  'People on your block list are never kept, even with a yes. To keep one, take them off blocklist.txt and run aggregate and review again.',
+  'Approve by hand means: the tools could not tell, so you decide. If they are a client, type yes. They come in with no summary.',
+  'merge_with puts two people in one household (a couple). Type yes on both. Then copy the candidate_id of the main person into the other person\'s merge_with cell.',
+  'Read every summary. Delete anything private (health, money, family, why they are really moving) before you build.',
+].join(' ');
+
+/** Plain words for the what_to_do column. */
+function whatToDo(/** @type {any} */ c, /** @type {any} */ j) {
+  if (c.scope_reason === BLOCKED_REASON) return 'Left out for good. A yes here is ignored, because this person is on your block list.';
+  if (c.sensitive) return 'Approve by hand: type yes only if this is a client. They come in with no summary, because a personal topic was mixed in.';
+  if (j.include === false) return 'Your AI suggested leaving this person out. Type yes only if you know they are a real estate relationship.';
+  if (c.scope !== 'in') return 'Left out unless you type yes. Leave it blank for family, friends, doctors, lawyers and companies.';
+  if (j.merge_with) return 'Your AI thinks this person shares a household with the candidate_id in merge_with. Type yes on both to keep them together.';
+  return 'Type yes to keep. Read the summary first.';
+}
 
 /** The owner's review sheet. The decision column starts empty: only "yes" rows go anywhere. */
 export function reviewCsv(/** @type {any[]} */ candidates, /** @type {Record<string, any>} */ judgments) {
-  return toCsv(REVIEW_COLS, candidates.map((c) => {
+  const readme = { decision: '', candidate_id: README_ID, display_name: README_TEXT, emails: '', phones: '', in_scope: '', scope_reason: '', what_to_do: '', suggested_stage: '', suggested_next_step: '', summary: '', why: '', message_count: '', first_contact_on: '', last_contact_on: '', merge_with: '' };
+  return toCsv(REVIEW_COLS, [readme, ...candidates.map((c) => {
     const j = judgments[c.candidate_id] ?? {};
     return {
       decision: '', candidate_id: c.candidate_id, display_name: j.display_name ?? c.display_name ?? '',
       emails: c.handles.filter((/** @type {any} */ h) => h.kind === 'email').map((/** @type {any} */ h) => h.value).join(' '),
       phones: c.handles.filter((/** @type {any} */ h) => h.kind === 'phone').map((/** @type {any} */ h) => h.value).join(' '),
-      in_scope: c.scope === 'in' && j.include !== false ? 'yes' : 'no', scope_reason: j.include === false ? 'Your AI agent suggested leaving this out' : c.scope_reason,
+      in_scope: c.scope === 'in' && j.include !== false ? 'yes' : 'no', scope_reason: j.include === false && c.scope_reason !== BLOCKED_REASON ? 'Your AI agent suggested leaving this out' : c.scope_reason,
+      what_to_do: whatToDo(c, j),
       suggested_stage: j.suggested_stage ?? c.suggested_stage, suggested_next_step: j.suggested_next_step ?? c.suggested_next_step ?? '',
       summary: c.sensitive ? '' : j.summary ?? '', why: j.why ?? c.why, message_count: c.message_count,
       first_contact_on: c.first_contact_on ?? '', last_contact_on: c.last_contact_on ?? '', merge_with: j.merge_with ?? '',
     };
-  }));
+  })]);
 }
 
 /**
  * Builds the contract folder from the owner's review sheet. Only rows marked "yes" are included.
- * @param {any[]} candidates @param {string} reviewText @param {string} outDir @param {{ sources: string[], since?: string|null, until?: string|null }} meta
+ * People on the block list are left out even when the sheet says yes: the block list wins.
+ * @param {any[]} candidates @param {string} reviewText @param {string} outDir @param {{ sources: string[], since?: string|null, until?: string|null, blocklist?: string[] }} meta
  */
 export function buildContract(candidates, reviewText, outDir, meta) {
   const rows = parseCsv(reviewText);
@@ -201,10 +262,17 @@ export function buildContract(candidates, reviewText, outDir, meta) {
   const byId = new Map(candidates.map((c) => [c.candidate_id, c]));
   /** @type {Map<string, any>} */
   const approved = new Map();
+  /** @type {string[]} */
+  const blockedYes = [];
   for (const r of rows.slice(1)) {
     if ((r[idx('decision')] ?? '').trim().toLowerCase() !== 'yes') continue;
     const c = byId.get(r[idx('candidate_id')]);
-    if (c) approved.set(c.candidate_id, { c, row: r });
+    if (!c) continue;
+    if (c.scope_reason === BLOCKED_REASON || isBlocked(c.handles, [c.display_name, r[idx('display_name')]], meta.blocklist ?? [])) {
+      blockedYes.push(r[idx('display_name')] || c.display_name || c.handles[0]?.value || c.candidate_id);
+      continue;
+    }
+    approved.set(c.candidate_id, { c, row: r });
   }
   const households = []; const people = []; const methods = []; const evidence = [];
   /** @type {any[]} */
@@ -247,5 +315,5 @@ export function buildContract(candidates, reviewText, outDir, meta) {
   write('consent', ['household_id','person_id','status','source','recorded_on','wording'], []);
   write('suppressions', ['kind','value','reason'], []);
   writeFileSync(join(outDir, 'manifest.json'), JSON.stringify({ contract_version: CONTRACT_VERSION, created_at: new Date().toISOString(), created_by: 'rescue tools', sources: meta.sources, ...(meta.since ? { range_start: meta.since } : {}), ...(meta.until ? { range_end: meta.until } : {}) }, null, 2) + '\n');
-  return { households: households.length, people: people.length, contact_methods: methods.length };
+  return { households: households.length, people: people.length, contact_methods: methods.length, blocked_yes: blockedYes };
 }

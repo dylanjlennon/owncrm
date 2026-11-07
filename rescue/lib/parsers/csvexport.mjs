@@ -6,6 +6,25 @@ import { parseCsv } from '../../../contract/lib/csv.mjs';
 import { handleFrom, toRecord } from '../util.mjs';
 
 const find = (/** @type {string[]} */ headers, /** @type {RegExp} */ re) => headers.findIndex((h) => re.test(h.trim()));
+/** The first pattern, in order, that matches any column wins. */
+const findFirst = (/** @type {string[]} */ headers, /** @type {RegExp[]} */ res) => {
+  for (const re of res) { const i = find(headers, re); if (i >= 0) return i; }
+  return -1;
+};
+
+// Which date column to read, best first. A closed-deal export often has "Contract Date" before
+// "Close Date": the close date is the one that matters (anniversaries, past client), so it is
+// looked for first, and a column with just "date" in it is the last resort. A CRM export's
+// "Last Activity" says when you last talked, so it comes before "Created".
+const CLOSE = /^(?:actual\s+)?(?:close|closing|closed)(?:\s*(?:date|on))?$|\b(?:close|closing|closed)\s*(?:date|on)\b|\bdate\s*(?:closed|of\s+closing)\b|\bclose\s+of\s+escrow\b|\bcoe\b/i;
+const LAST_TOUCH = /\blast\s*(?:activity|contact(?:ed)?|touch|communication|interaction)\b/i;
+const SIGNUP = /(?:signup|sign[- ]?up date|signed up|subscribed|created|added|date added)/i;
+const ANY_DATE = /(closing|closed|close date|signup|signed up|created|date)/i;
+export const DATE_COLUMNS = {
+  deal_records: [CLOSE, ANY_DATE],
+  crm_export: [LAST_TOUCH, CLOSE, SIGNUP, ANY_DATE],
+  website_lists: [SIGNUP, LAST_TOUCH, ANY_DATE],
+};
 
 /** @param {string} path @param {{ source: 'crm_export' | 'deal_records' | 'website_lists' }} opts */
 export function parseCsvExport(path, opts) {
@@ -15,7 +34,7 @@ export function parseCsvExport(path, opts) {
     first: find(headers, /^first( ?name)?$/i), last: find(headers, /^last( ?name)?$/i), name: find(headers, /^(full ?name|name|client( name)?|contact)$/i),
     emails: headers.map((h, i) => (/e-?mail/i.test(h) ? i : -1)).filter((i) => i >= 0),
     phones: headers.map((h, i) => (/(phone|mobile|cell)/i.test(h) ? i : -1)).filter((i) => i >= 0),
-    date: find(headers, /(closing|closed|close date|signup|signed up|created|date)/i),
+    date: findFirst(headers, DATE_COLUMNS[opts.source] ?? [ANY_DATE]),
     address: find(headers, /(property|address|street)/i), side: find(headers, /^(side|type|represent)/i), stage: find(headers, /^(stage|status)$/i),
   };
   const evidence = opts.source === 'deal_records' ? 'deal_record' : opts.source === 'website_lists' ? 'website_list' : 'crm_export';

@@ -4,7 +4,8 @@
 // Commands: init, extract, aggregate, review, build, check, upload, heartbeat, schedule
 // Nothing here sends a message to anyone. Upload is a dry run unless you add --send.
 import { appendFileSync, chmodSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { ensureWork, audit, loadConfig } from '../lib/util.mjs';
@@ -53,6 +54,28 @@ function writeEnvFile(work, url, token) {
   return p;
 }
 
+// The folder that holds this code. A work folder inside it could be uploaded to GitHub by a later
+// "git add" and push, so it is refused.
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/**
+ * Refuses a folder named with a literal "~" (the terminal did not turn it into the home folder:
+ * PowerShell and quoted paths do this) and a folder inside this code folder.
+ * @param {string} raw what was typed @param {string} what "work folder" or "output folder"
+ */
+export function checkFolder(raw, what) {
+  const example = join(homedir(), 'owncrm-rescue');
+  if (/^~/.test(raw) || raw.split(/[\\/]/).includes('~')) {
+    throw new Error(`The ${what} "${raw}" starts with ~, and your terminal did not turn ~ into your home folder (PowerShell and quoted paths do this). Nothing was written. Type the full path instead, for example ${example}. Or leave out --work to use that folder.`);
+  }
+  const full = resolve(raw);
+  const rel = relative(REPO_ROOT, full);
+  if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+    throw new Error(`The ${what} "${full}" is inside the OwnCRM code folder (${REPO_ROOT}). Your exports and client details must not live there: a later upload of the code to GitHub could include them. Nothing was written. Use a folder outside it, for example ${example}.`);
+  }
+  return full;
+}
+
 function args(argv) {
   const out = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -66,7 +89,7 @@ function args(argv) {
 export async function run(argv, log = console.log) {
   const a = args(argv);
   const cmd = a._[0];
-  const work = resolve(String(a.work || join(homedir(), 'owncrm-rescue')));
+  const work = a.work && a.work !== true ? checkFolder(String(a.work), 'work folder') : join(homedir(), 'owncrm-rescue');
   ensureWork(work);
   const cfg = loadConfig(work);
   if (a.since) cfg.since = String(a.since);
@@ -137,20 +160,26 @@ export async function run(argv, log = console.log) {
     if (existsSync(out) && !a.overwrite) throw new Error(`${out} already exists. Your decisions are in it. Add --overwrite to start the sheet again.`);
     writeFileSync(out, reviewCsv(candidates, j.ok));
     audit(work, 'review', { people: candidates.length, judgments: Object.keys(j.ok).length, dropped: j.dropped.length });
-    log(`Review sheet: ${out}\nOpen it in a spreadsheet. Type yes in the decision column for each person to keep. Leave everyone else blank.${j.dropped.length ? `\n${j.dropped.length} AI judgments were refused: ${j.dropped.slice(0, 5).join('; ')}` : ''}`);
+    const refused = j.dropped.length
+      ? `\n\n${j.dropped.length} AI ${j.dropped.length === 1 ? 'judgment was' : 'judgments were'} refused. ${j.dropped.length === 1 ? 'That person is' : 'Those people are'} still on the sheet, with no AI summary:\n${j.dropped.slice(0, 50).map((d) => `- ${d}`).join('\n')}${j.dropped.length > 50 ? `\n- and ${j.dropped.length - 50} more` : ''}\nTo fix one: rewrite that entry in its judgments file without the flagged word, then run review again with --overwrite. --overwrite starts the sheet again, so do it before you type any decisions (or copy your decisions over afterwards).`
+      : '';
+    log(`Review sheet: ${out}\nOpen it in a spreadsheet. The first row explains each column. Type yes in the decision column for each person to keep. Leave everyone else blank.${refused}`);
     return { dropped: j.dropped };
   }
 
   if (cmd === 'build') {
-    const out = resolve(String(a.out || join(work, 'contract')));
+    const out = a.out && a.out !== true ? checkFolder(String(a.out), 'output folder') : join(work, 'contract');
     const candidates = JSON.parse(readFileSync(join(work, 'candidates.json'), 'utf8'));
     const reviewText = readFileSync(join(work, 'review.csv'), 'utf8');
     const sources = [...new Set(candidates.flatMap((c) => c.evidence.map((e) => e.source)))];
-    const counts = buildContract(candidates, reviewText, out, { sources, since: cfg.since, until: cfg.until });
+    const counts = buildContract(candidates, reviewText, out, { sources, since: cfg.since, until: cfg.until, blocklist: cfg.blocklist });
     const v = validateContract(readFolder(out));
     if (!v.ok) writeFileSync(join(out, 'contract-errors.csv'), errorsCsv(v.errors));
-    audit(work, 'build', { ...counts, valid: v.ok });
-    log(`Contract folder: ${out}\n${counts.households} households from the people you marked yes. ${v.ok ? 'It passes the contract check.' : 'It does NOT pass the check. See contract-errors.csv.'}`);
+    audit(work, 'build', { households: counts.households, people: counts.people, contact_methods: counts.contact_methods, blocked_yes: counts.blocked_yes.length, valid: v.ok });
+    const blockedNote = counts.blocked_yes.length
+      ? `\n${counts.blocked_yes.length} ${counts.blocked_yes.length === 1 ? 'person' : 'people'} marked yes ${counts.blocked_yes.length === 1 ? 'was' : 'were'} left out because they are on your block list: ${counts.blocked_yes.slice(0, 20).join(', ')}. The block list always wins. To keep someone, take them off blocklist.txt, then run aggregate, review and build again.`
+      : '';
+    log(`Contract folder: ${out}\n${counts.households} households from the people you marked yes. ${v.ok ? 'It passes the contract check.' : 'It does NOT pass the check. See contract-errors.csv.'}${blockedNote}`);
     return { ...counts, valid: v.ok, out };
   }
 
