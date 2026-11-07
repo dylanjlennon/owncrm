@@ -211,3 +211,19 @@ describe('L4 round 3: real estate wording is not refused', () => {
     expect(containsSensitive('social security no. 12345-6789')).toBe(true);
   });
 });
+
+describe('L3 and L4 round 3, from the red team probe', () => {
+  it('a 9-digit run inside an email address is still caught', () => {
+    expect(containsSensitive('routing021000021@bank.example.com')).toBe(true);
+    expect(containsSensitive('ssn.123-45-6789@example.com')).toBe(true);
+    expect(containsSensitive('test-lead-1762450000000@example.com')).toBe(false);
+    expect(containsSensitive('demo.agent2026@example.com')).toBe(false);
+  });
+  it('combining marks between digits do not hide a number', () => {
+    expect(containsSensitive('1̲2̲3456789')).toBe(true);
+  });
+  it('a loan amount is not an account number; a loan number still is', () => {
+    for (const t of ['loan 300000 preapproved', 'Loan 450000 at 6.5%', 'loan amount 325000']) expect(containsSensitive(t), t).toBe(false);
+    for (const t of ['loan # 1234567', 'loan number 12345678', 'loan no. 0012345', 'loan#1234567']) expect(containsSensitive(t), t).toBe(true);
+  });
+});

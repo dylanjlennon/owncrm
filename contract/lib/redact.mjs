@@ -32,7 +32,9 @@ export const MAX_CHECK_CHARS = 10_000;
 export function normalizeText(text) {
   return String(text).normalize('NFKC').replace(/[\p{Cf}\u0000]/gu, '').replace(/[^\S\r\n]+/g, ' ')
     .replace(/[\p{Pd}\u2212\u2043\u2796\u2E3A\u2E3B]/gu, '-')
-    .replace(/[^\x00-\x7F]/gu, (c) => (/\p{Nd}/u.test(c) ? asciiDigit(c) : c));
+    .replace(/[^\x00-\x7F]/gu, (c) => (/\p{Nd}/u.test(c) ? asciiDigit(c) : c))
+    // Accent or underline marks stuck on a digit ("1̲2̲3...") would split the number.
+    .replace(/(\d)\p{M}+/gu, '$1');
 }
 
 // Unicode keeps each script's digits 0 to 9 in a row, so a digit's value is its distance from
@@ -72,14 +74,19 @@ const RULES = [
   { name: 'card number', re: /\b(?:\d[ -]?){13,19}\b/g, test: (m) => luhn(m.replace(/\D/g, '')) },
   { name: 'license number', re: new RegExp(String.raw`\b(?:driver'?s?\s{1,3}licen[sc]e|DL|license${SEP}(?:no|number|#))${SEP}(?:is${SEP})?[A-Z0-9-]{5,20}\b`, 'gi') },
   // "acct 123456", "acct no. 0012345", "acct-123456789012", "a/c 9876543210", "loan # 1234567",
-  // "account number is 12345678".
-  { name: 'account number', re: new RegExp(String.raw`(?:\b(?:acct|account|loan)|(?<![\w/])a\/c)${SEP}(?:(?:no\.?|nbr|num|number)${SEP})?(?:is${SEP})?\d{6,17}(?!\d)`, 'gi') },
+  // "account number is 12345678". After "loan" a marker is needed ("loan # 1234567"): "loan
+  // 300000" is a loan amount, not an account.
+  { name: 'account number', re: new RegExp(String.raw`(?:\b(?:acct|account)|(?<![\w/])a\/c)${SEP}(?:(?:no\.?|nbr|num|number)${SEP})?(?:is${SEP})?\d{6,17}(?!\d)`, 'gi') },
+  { name: 'account number', re: new RegExp(String.raw`\bloan${SEP}(?:no\.?|nbr|num|number|#)${SEP}(?:is${SEP})?\d{6,17}(?!\d)`, 'gi') },
   // No keyword needed. A run of exactly 9 digits is the shape of a Social Security or bank
   // routing number. Phone numbers have 10 or 11 digits, so they are left alone.
   { name: 'SSN or routing number', re: /(?<![\d.+])\d{9}(?!\d|\.\d)/g },
   // 12 to 17 digits in a row looks like a bank or loan account. Card numbers are caught above.
   { name: 'account number', re: /(?<![\d.+])\d{12,17}(?!\d|\.\d)/g },
 ];
+
+/** @param {string} local the part of an email address before "@" */
+const setAside = (local) => /[A-Za-z]/.test(local) && !/(?<!\d)\d{9}(?!\d)|(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)/.test(local);
 
 /**
  * @param {string | null | undefined} text
@@ -94,11 +101,13 @@ export function redact(text) {
   // Email addresses are set aside first: digits inside one ("test-lead-1762450000000@example.com")
   // are part of the address, not an account number. Put back unchanged at the end. The match
   // starts only at the start of a word, so a long run with no "@" is read once, not once per
-  // character.
+  // character. Only an address whose first part has a letter and no SSN or routing shape is set
+  // aside: "123-45-6789@example.com" and "routing021000021@example.com" are numbers with "@" glued on, and
+  // the rules still see them.
   /** @type {string[]} */
   const emails = [];
   let out = normalizeText(input).replace(/(?<![^\s@<>(),;:"'])[^\s@<>(),;:"']+@[^\s@<>(),;:"']+\.[A-Za-z]{2,}/g,
-    (m) => (/[A-Za-z]/.test(m.slice(0, m.indexOf('@'))) ? `\u0000${emails.push(m) - 1}\u0000` : m));
+    (m) => (setAside(m.slice(0, m.indexOf('@'))) ? `\u0000${emails.push(m) - 1}\u0000` : m));
   for (const rule of RULES) {
     out = out.replace(rule.re, (m) => {
       if (rule.test && !rule.test(m)) return m;
