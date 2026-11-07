@@ -5,7 +5,8 @@ Your phone or computer
   └── Your CRM (your-crm.yourdomain.com, runs on Vercel)
         ├── Today ............ who to call: leads waiting, follow-ups due (edit, snooze, repeat), deal dates this week,
         │                      birthdays and home anniversaries in the next 30 days
-        ├── Contacts ......... everyone, with consent, source and source type on each
+        ├── Contacts ......... everyone, with consent, source and source type on each.
+        │                      A rescued summary shows at the top, under "From your rescue"
         ├── Deals ............ key dates (not your transaction file)
         ├── Needs review ..... forwarded emails we couldn't read. Nothing is dropped
         ├── Email ............ what you sent and whether it arrived
@@ -20,13 +21,13 @@ Behind it (you have a login to each; protect them with two-step sign-in)
   ├── Supabase ......... the database. Your data lives here
   ├── Resend ........... sends your email and receives forwarded lead emails
   ├── Healthchecks.io .. the outside watchdog. Emails you if the app goes quiet
-  └── GitHub ........... the code, and the nightly encrypted backup
+  └── GitHub ........... your PRIVATE copy of the code, and the nightly encrypted backup
 
 On your own computer
-  ├── This folder ...... the code and the guides
-  ├── Rescue work folder (~/owncrm-rescue) ... your exports and review sheet. Never uploaded to the CRM.
+  ├── This folder ...... the code and the guides. Never put exports, the rescue folder or your backup key here
+  ├── Rescue work folder (~/owncrm-rescue, outside this folder) ... your exports and review sheet. Never uploaded to the CRM.
   │                      What your AI reads from it goes to your AI company under your account
-  └── Your backup key .. in your password manager. Without it, backups can't be opened
+  └── Your backup key .. in your password manager, not in a file. Without it, backups can't be opened
 ```
 
 ## What happens when a lead comes in

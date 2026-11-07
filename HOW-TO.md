@@ -32,7 +32,10 @@ Import, choose the CSV (up to 4 MB; split bigger files), match the columns, chec
 The file is checked the moment you upload it. Rows with a Social Security, routing, account or card number, or with health or legal words, are not saved at all, and the file itself is never saved. The error file lists the line number and the reason for each refused row, never the row itself: open your own copy of the file to fix those lines. Finish the import within a day; after that the uploaded rows are cleared and you upload again.
 
 ## Import a rescue folder
-Import, "A rescue folder", select every file in the folder (up to 4 MB in all). If it doesn't pass the check, download the error file. It names the file, line and column of each problem. Rows that mention health or a legal matter, or hold a number shaped like a Social Security, routing or account number, are refused on purpose. Bigger folder: ask your agent to run `npm run contract:sql <folder>` and paste the result into the Supabase SQL editor.
+Import, "A rescue folder", select every file in the folder (up to 4 MB in all). Press "Check folder". It counts households, people, emails and phones, the summaries from your rescue, closed deals, timeline items and opt-outs. After the import, each contact with a summary shows it at the top of its page, under "From your rescue". It is saved as that contact's Notes, so you change it under Details, Notes. If it doesn't pass the check, download the error file. It names the file, line and column of each problem. Rows that mention health or a legal matter, or hold a number shaped like a Social Security, routing or account number, are refused on purpose. Bigger folder: ask your agent to run `npm run contract:sql <folder>` and paste the result into the Supabase SQL editor.
+
+## Fix a refused summary in the rescue
+When `review` says an AI judgment was refused, each line names the person, the field (summary, why, suggested_next_step), the rule and the word. For example: refused: the word "elderly" in the summary is on the list of words about who someone is. Have your agent rewrite that one entry in its judgments file without the word, then run review again with `--overwrite`. `--overwrite` starts the sheet again, so do it before you type decisions. A refused person stays on the sheet with no AI summary; you can still keep them. Town names (Black Mountain, Old Fort, White Oak), "old CRM" and "near Mission Hospital" are not refused.
 
 ## Connect your history
 Connect your history, read the notice, create a token, and paste it yourself into the `owncrm.env` file in your rescue work folder (never in a chat, a crontab line or a scheduled task). `rescue schedule` makes that file and keeps it private. Uploaded batches wait under "Batches waiting for you". Approve people, Save. Undo is on the batch page.
@@ -50,6 +53,7 @@ Runs every Monday morning. Cleanup lists problems; it never changes a contact. I
 Status, go-live checklist. Every item must pass: settings, verified domain, logged-out read test, public signup off (checked again when you press Finish), test lead, test alert you confirm, test backup with its own outside check, app watchdog check-in, and the daily all-clear turned on.
 
 ## Updating (apply the database change first)
+Your private copy on GitHub does not follow the public one by itself. To bring in an update, ask your agent to compare your copy with https://github.com/dylanjlennon/owncrm and walk you through it. GitHub's "Sync fork" button only exists for forks, not for copies made with the Deploy button or a template.
 When an update comes with a new file in `supabase/migrations/`, apply the migration **first**, then deploy the app. The new app relies on the new database rules (for this round: `20261107000100_review_fixes.sql`, then `20261107000200_review_fixes_2.sql`, then `20261107000300_alert_gate.sql`, in that order). If `20261107000200_review_fixes_2.sql` stops with "Stopped before changing anything", your daily or monthly email limit is not higher than the number held back for alerts. Nothing was changed. The message gives two one-line fixes (hold back fewer emails for alerts, or raise the limit if your email plan allows it). Run one in the SQL editor, then run the file again. `20261107000300_alert_gate.sql` checks that `20261107000200_review_fixes_2.sql` finished. If it did not, `20261107000300_alert_gate.sql` stops with "has not finished on this database" and changes nothing: run 0200 first. Running 0100 or 0200 again after 0300 is safe. They leave the newer send rules in place. If the app goes live first, some buttons fail until the migration runs, and safety checks the app expects from the database are missing.
 1. Back up (or check last night's backup is green on Status).
 2. Ask your agent to apply the new migration files to your project, in name order (Supabase CLI `supabase db push`, or paste each file into the SQL editor and run it whole).
@@ -107,7 +111,7 @@ If you don't set up a watchdog at all, a red check shows only in email and on St
 
 ## Replace a leaked key
 If a key was pasted into a chat, an email, a screenshot or a public repository, replace it. Don't wait.
-1. **Make the new value.** Supabase service key: Supabase, Project Settings, API, roll the key (or create a new secret key and delete the old one). Resend API key: Resend, API Keys, create a new one, then delete the old one. Webhook secrets: delete and recreate the webhook in Resend. Your own random secrets (LINK_SIGNING_SECRET, CRON_SECRET, BACKUP_REPORT_SECRET, LEAD_FORM_KEY): make a new one with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+1. **Make the new value.** Supabase service key: Supabase, Project Settings, API, roll the key (or create a new secret key and delete the old one). Resend API key: Resend, API Keys, create a new one, then delete the old one. Webhook secrets: delete and recreate the webhook in Resend. Your own random secrets (LINK_SIGNING_SECRET, CRON_SECRET, BACKUP_REPORT_SECRET, LEAD_FORM_KEY): make a new one with your password manager's generator (64 characters, letters and numbers only), or with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
 2. **Put it everywhere it lives:** Vercel, Settings, Environment Variables, and your `.env.local`. BACKUP_REPORT_SECRET also lives in GitHub, Settings, Secrets.
 3. **Redeploy** in Vercel, then open Status and run the checks.
 4. **What changes for you:** a new LEAD_FORM_KEY changes your form address, so update the link on your website. A new LINK_SIGNING_SECRET makes old "I replied" and unsubscribe links stop working (unsubscribes already done stay done). A history token: revoke it on Connect your history and make a new one.
@@ -116,6 +120,8 @@ If a key was pasted into a chat, an email, a screenshot or a public repository, 
 ## Windows notes
 - Use PowerShell. Paths look like `C:\Users\you\owncrm-rescue` instead of `~/owncrm-rescue`.
 - No iMessage rescue (it needs a Mac). Google Voice, Android texts, contacts and CSV exports all work.
-- `age` and `psql` aren't built in: `winget install FiloSottile.age` and `winget install PostgreSQL.PostgreSQL`.
+- `age` and `psql` aren't built in: `winget install FiloSottile.age` and `winget install PostgreSQL.PostgreSQL`. On a Mac: `brew install age` and `brew install libpq`.
+- Never type `~` in a rescue command on Windows. Use the full path. The rescue tools stop if they see a `~` that wasn't turned into your home folder.
+- Make the backup key in your home folder (`age-keygen -o $HOME\crm-backup-key.txt`), never in the owncrm folder.
 - Random secrets: use the `node -e` command above instead of `openssl`.
 - The scheduled rescue uses Task Scheduler. `rescue schedule` prints the exact settings.

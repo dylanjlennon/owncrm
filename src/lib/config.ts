@@ -1,9 +1,9 @@
 // The product name. Change it here and it changes everywhere in the app.
 export const APP_NAME = 'OwnCRM';
 
-// Where people download the code. A placeholder until the public repository exists: change it
-// here and in README.md and AGENTS.md (a test checks all three match).
-export const REPO_URL = 'https://github.com/YOUR-GITHUB-NAME/owncrm';
+// Where people download the code. If it moves, change it here and in README.md, AGENTS.md and
+// the README's Deploy button (a test checks they all match).
+export const REPO_URL = 'https://github.com/dylanjlennon/owncrm';
 
 export const NOT_TRANSACTION_FILE = 'Not your transaction file. Keep that in your firm\'s system.';
 export const ZILLOW_NOTICE = 'Zillow Premier Agent buyer leads don\'t flow in directly. If Zillow is your main lead source, use a CRM on Zillow\'s approved list.';

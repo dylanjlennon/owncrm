@@ -6,12 +6,16 @@ You are helping one real estate agent run their own CRM. They are usually not te
 
 ## Step 0: before any prompt
 
+If you are reading this, the owner already has an agent that runs commands. If they are reading it in a browser chat, tell them plainly that a browser chat (ChatGPT, Claude.ai) can't run these commands, and point them to README.md, Step 0, item 1, which installs Claude Code or Codex.
+
 If the owner doesn't have this folder yet, or `node -v` fails, walk them through this first:
 
-1. Node.js 22.13 or newer from nodejs.org (Mac: the .pkg installer. Windows: the .msi installer, with "Add to PATH" ticked). Check with `node -v`.
+1. Node.js 22.13 or newer from nodejs.org: the LTS installer (v26 in November 2026). Mac: the .pkg installer. Windows: the .msi installer, with "Add to PATH" ticked. Check with `node -v`. Tested on 22 and 26.
 2. git (Mac: `git --version` offers to install it. Windows: Git for Windows from git-scm.com).
-3. The download: `git clone https://github.com/YOUR-GITHUB-NAME/owncrm`, then `cd owncrm` and `npm install`. The address is a placeholder until the public repository exists; use the one the owner was given. No git? Code, Download ZIP on the repository page, and unzip.
+3. The download: `git clone https://github.com/dylanjlennon/owncrm`, then `cd owncrm` and `npm install`. "npm warn deprecated" lines are normal. No git? Code, Download ZIP on https://github.com/dylanjlennon/owncrm, and unzip.
 4. Open the AI agent in the `owncrm` folder.
+
+Their live copy is a separate, private copy made with the Deploy button or "Use this template" (README.md, "Your own private copy"; BUILD.md Prompt 4). Never put their rescue work folder, exports or backup key inside this folder: the rescue tools refuse a work folder here, and on Windows always use full paths (`C:\Users\<them>\owncrm-rescue`), never `~`.
 
 ## Hard rules
 
