@@ -112,7 +112,7 @@ describe('blue #2 and #3: the all-clear and stopped backups', () => {
     expect(daily?.text).toMatch(/Last backup/);
     expect(daily?.text).toMatch(/watchdog/i);
   });
-  it('a stopped backup emails the owner once, and tells the watchdog', async () => {
+  it('a stopped backup emails the owner once, and tells the second watchdog check', async () => {
     const jobs = okJobs().map((j) => (j.job === 'backup' ? { ...j, finished_at: hoursAgo(30), started_at: hoursAgo(30) } : j));
     const db = world({ jobRuns: jobs, settings: { all_clear_enabled: false } });
     const adapter = new MockAdapter();
@@ -120,12 +120,14 @@ describe('blue #2 and #3: the all-clear and stopped backups', () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = (async (url: any) => { pings.push(String(url)); return new Response('OK'); }) as any;
     try {
-      await tickOnce(db, adapter, { healthcheckUrl: 'https://hc.example.com/abc' });
-      await tickOnce(db, adapter, { healthcheckUrl: 'https://hc.example.com/abc' });
+      await tickOnce(db, adapter, { healthcheckUrl: 'https://hc.example.com/abc', checksHealthcheckUrl: 'https://hc.example.com/checks' });
+      await tickOnce(db, adapter, { healthcheckUrl: 'https://hc.example.com/abc', checksHealthcheckUrl: 'https://hc.example.com/checks' });
     } finally { globalThis.fetch = realFetch; }
     const backupMail = adapter.sent.filter((m) => /backup/i.test(m.subject));
     expect(backupMail.map((m) => m.to).sort()).toEqual(['backup@example.com', 'owner@example.com']);
-    expect(pings.at(-1)).toBe('https://hc.example.com/abc/fail');
+    // The scheduler ran, so the main check is up; the second check reports the red backup.
+    expect(pings.filter((p) => p.startsWith('https://hc.example.com/abc'))).toEqual(['https://hc.example.com/abc', 'https://hc.example.com/abc']);
+    expect(pings.at(-1)).toBe('https://hc.example.com/checks/fail');
   });
   it('a failed backup run emails the owner too', async () => {
     const jobs = okJobs().map((j) => (j.job === 'backup' ? { ...j, ok: false, detail: 'pg_dump failed' } : j));
@@ -187,5 +189,27 @@ describe('M2: one lead with escalations is not a flood', () => {
     }
     expect(adapter.sent.some((m) => /Many new leads/.test(m.subject))).toBe(false);
     expect(adapter.sent.filter((m) => m.subject === 'Still no reply: Lead 4').length).toBe(2);
+  });
+});
+
+describe('N8: the outside watchdog means "the scheduler ran"', () => {
+  const capture = async (fn: () => Promise<unknown>) => {
+    const pings: string[] = []; const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (url: any) => { pings.push(String(url)); return new Response('OK'); }) as any;
+    try { await fn(); } finally { globalThis.fetch = realFetch; }
+    return pings;
+  };
+  it('a red history sync (laptop off) does not hold the main check down', async () => {
+    const db = world({ jobRuns: okJobs(), settings: { all_clear_enabled: false, history_sync_expected_hours: 24 } });
+    db.tables.history_sources.push({ source: 'gmail', status: 'connected', last_success_at: hoursAgo(24 * 7), last_run_at: hoursAgo(24 * 7) });
+    const adapter = new MockAdapter();
+    const pings = await capture(() => tickOnce(db, adapter, { healthcheckUrl: 'https://hc.example.com/abc', checksHealthcheckUrl: 'https://hc.example.com/checks' }));
+    expect(pings).toEqual(['https://hc.example.com/abc', 'https://hc.example.com/checks']);
+  });
+  it('a stopped backup does not hold the main check down either: only the second check fails', async () => {
+    const jobs = okJobs().map((j) => (j.job === 'backup' ? { ...j, finished_at: hoursAgo(30), started_at: hoursAgo(30) } : j));
+    const db = world({ jobRuns: jobs, settings: { all_clear_enabled: false } });
+    const pings = await capture(() => tickOnce(db, new MockAdapter(), { healthcheckUrl: 'https://hc.example.com/abc' }));
+    expect(pings).toEqual(['https://hc.example.com/abc']);
   });
 });

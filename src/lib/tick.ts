@@ -11,7 +11,7 @@ import { failingChecks, type Check } from './health';
 
 export type TickDeps = {
   db: SupabaseClient; adapter: EmailAdapter; appUrl: string; linkSecret?: string; now: Date;
-  healthcheckUrl?: string; selfTest: () => Promise<{ ok: boolean; detail: string }>;
+  healthcheckUrl?: string; checksHealthcheckUrl?: string; selfTest: () => Promise<{ ok: boolean; detail: string }>;
   fakeLead: () => Promise<{ ok: boolean; detail: string }>;
 };
 
@@ -128,6 +128,10 @@ function ago(iso: string | null | undefined, now: Date) {
   return h < 1 ? `${Math.max(1, Math.round(h * 60))} minutes ago` : h < 48 ? `${Math.round(h)} hours ago` : `${Math.round(h / 24)} days ago`;
 }
 
+// Checks and jobs whose failure means the app's own pipeline is broken.
+const PIPELINE = new Set(['backup', 'self_test', 'fake_lead', 'sending', 'no_reply', 'deal_reminders', 'hygiene']);
+const isPipeline = (k: string) => PIPELINE.has(k.replace(/^check:/, ''));
+
 export async function runTick(d: TickDeps) {
   const outcomes: Record<string, boolean> = {};
   const tick = await runJob(d.db, 'tick', async () => {
@@ -193,14 +197,26 @@ export async function runTick(d: TickDeps) {
     // The scheduler itself ran. Failed checks show on their own rows and go to the watchdog.
     return { ok: true, detail: failed.length ? `Ran. These checks failed: ${failed.join(', ')}` : 'All scheduled work ran.', value: failed };
   });
-  const anyFailed = !tick.ok || ((tick.value as string[] | undefined)?.length ?? 0) > 0;
+  const failedNames = (tick.value as string[] | undefined) ?? [];
+  const anyFailed = !tick.ok || failedNames.length > 0;
+  // Red checks that mean the app's own pipeline is broken. History sync, the email allowance,
+  // database size and the domain check go to email and Status only: a laptop that is off for a
+  // week must not hold an outside check "down".
+  const pipelineRed = !tick.ok || Object.entries(outcomes).some(([k, v]) => !v && isPipeline(k));
 
-  // The watchdog lives outside Vercel, Supabase and Resend. Silence or /fail makes it alert you.
+  // The outside watchdog lives outside Vercel, Supabase and Resend.
+  // HEALTHCHECK_PING_URL means one thing only: the scheduler ran. Silence makes it alert you, so a
+  // real scheduler or Vercel outage always shows as down, whatever else is red.
+  // HEALTHCHECK_CHECKS_URL (optional, a second check) gets /fail while a pipeline check is red.
   if (d.healthcheckUrl) {
     await runJob(d.db, 'watchdog', async () => {
-      const url = anyFailed ? `${d.healthcheckUrl!.replace(/\/$/, '')}/fail` : d.healthcheckUrl!;
+      const url = tick.ok ? d.healthcheckUrl! : `${d.healthcheckUrl!.replace(/\/$/, '')}/fail`;
       const res = await fetch(url, { method: 'POST', body: tick.detail.slice(0, 500), signal: AbortSignal.timeout(8000) });
-      return { ok: res.ok, detail: res.ok ? (anyFailed ? 'Checked in and reported a failed check.' : 'Checked in.') : `Watchdog answered ${res.status}.` };
+      if (d.checksHealthcheckUrl) {
+        const curl = pipelineRed ? `${d.checksHealthcheckUrl.replace(/\/$/, '')}/fail` : d.checksHealthcheckUrl;
+        await fetch(curl, { method: 'POST', body: tick.detail.slice(0, 500), signal: AbortSignal.timeout(8000) }).catch(() => null);
+      }
+      return { ok: res.ok, detail: res.ok ? (tick.ok ? 'Checked in: the scheduler ran.' : 'Checked in and reported that the scheduler failed.') : `Watchdog answered ${res.status}.` };
     });
   }
   // ran: the scheduler itself worked. ok: and every check is green.
