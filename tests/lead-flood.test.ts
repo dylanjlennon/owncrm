@@ -103,11 +103,12 @@ describe('N2: junk sent to the inbound address', () => {
   });
   it('one sender can only turn so many emails into leads in an hour; the rest are kept for review', async () => {
     const w = world(); const adapter = new MockAdapter();
-    const rdc = (i: number) => ({ providerId: `r${i}`, from: 'leads@realtor.com', to: 'leads@example.com', subject: 'New realtor.com lead',
+    const rdc = (i: number) => ({ providerId: `r${i}`, from: 'leads@notify.example.com', to: 'leads@example.com', subject: 'New realtor.com lead',
       text: `realtor.com\nName: Demo Person${i}\nEmail: demo${i}@example.com\nPhone: 828-555-01${String(i % 100).padStart(2, '0')}\n`, html: null });
     const results = [];
     for (let i = 0; i < INBOUND_LIMITS.perSender + 5; i++) results.push(await processInbound(w.db as any, adapter, APP, undefined, rdc(i)));
     expect(results.filter((r: any) => r.limited)).toHaveLength(5);
+    expect(results.filter((r: any) => r.parsed)).toHaveLength(INBOUND_LIMITS.perSender);
     expect(w.db.tables.inbound_emails).toHaveLength(INBOUND_LIMITS.perSender + 5);
   });
 });
