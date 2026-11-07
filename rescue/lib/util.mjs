@@ -15,14 +15,34 @@ export function normalizeHandle(kind, value) {
   return d.length >= 10 ? d.slice(-10) : '';
 }
 
+// Header values are cut to this many characters before any rule reads them. Real headers are far
+// shorter; mail servers limit a line to about 1,000 characters.
+export const MAX_HEADER_CHARS = 1000;
+
 /** @param {string} raw @returns {{kind: 'email'|'phone', value: string} | null} */
 export function handleFrom(raw) {
   if (!raw) return null;
-  const m = raw.match(/[^\s<>"',;:]+@[^\s<>"',;:]+\.[a-z]{2,}/i);
+  raw = String(raw).slice(0, MAX_HEADER_CHARS);
+  // Review round 4, L1: an address starts only at the start of a word, and neither part can hold
+  // an "@", so a display name of many "@" is read once, not once per split.
+  const m = raw.match(/(?<![^\s<>"',;:])[^\s<>"',;:@]+@[^\s<>"',;:@]+\.[a-z]{2,}/i);
   if (m) return { kind: 'email', value: m[0].toLowerCase() };
   const d = raw.replace(/\D/g, '');
   if (d.length >= 10 && d.length <= 15) return { kind: 'phone', value: d.length === 11 && d.startsWith('1') ? `+${d}` : d.length === 10 ? `+1${d}` : `+${d}` };
   return null;
+}
+
+/**
+ * The display name in a From or To header ("Sample Example" <x@example.com> gives Sample Example),
+ * or null. No regex: the old one took time growing with the cube of the leading spaces (L1).
+ * @param {string | null | undefined} header
+ */
+export function displayName(header) {
+  const h = String(header ?? '').slice(0, MAX_HEADER_CHARS);
+  const lt = h.indexOf('<');
+  if (lt <= 0) return null;
+  const name = h.slice(0, lt).trim().replace(/^"/, '').replace(/"$/, '').trim();
+  return name && !name.includes('"') ? name : null;
 }
 
 /**

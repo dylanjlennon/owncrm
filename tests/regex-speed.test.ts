@@ -99,3 +99,43 @@ describe('M3 round 4: email HTML and From headers stay fast', async () => {
     expect(slow.map((f) => f.slice(root.length + 1))).toEqual([]);
   });
 });
+
+// Review round 4, L1: the rescue tool's email readers, on headers and bodies anyone can send.
+describe('L1 round 4: the rescue email readers stay fast', async () => {
+  const { handleFrom, displayName } = await import('../rescue/lib/util.mjs');
+  const { parseMbox } = await import('../rescue/lib/parsers/mbox.mjs');
+  const { parseConnectorJsonl } = await import('../rescue/lib/parsers/connector.mjs');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  it.each([
+    ['4,000 "@" in the display name', `"${'@'.repeat(4000)}" <x@example.com>`],
+    ['100,000 "@"', '@'.repeat(100_000)], ['100,000 "a@"', 'a@'.repeat(50_000)], ['100,000 "a@b."', 'a@b.'.repeat(25_000)],
+  ])('handleFrom on %s finishes in under 50 ms', (_n, s) => {
+    expect(time(() => handleFrom(s))).toBeLessThan(50);
+  });
+  it.each([
+    ['4,000 leading spaces', `${' '.repeat(4000)}x`], ['a name and 4,000 tabs, no "<"', `Sample${'\t'.repeat(4000)}x@example.com`],
+    ['100,000 spaces then "<"', `${' '.repeat(100_000)}<x@example.com>`],
+  ])('displayName on %s finishes in under 50 ms', (_n, s) => {
+    expect(time(() => displayName(s))).toBeLessThan(50);
+  });
+  it('still reads ordinary headers', () => {
+    expect(handleFrom('"Sample Example" <Sample@Example.com>')).toEqual({ kind: 'email', value: 'sample@example.com' });
+    expect(displayName('"Sample Example" <sample@example.com>')).toBe('Sample Example');
+    expect(displayName('Demo Person <demo@example.com>, Other <o@example.com>')).toBe('Demo Person');
+    expect(displayName('demo@example.com')).toBeNull();
+  });
+  it('an mbox message with a 1 MB body of "<" and a long From header is read in under a second', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'l1-'));
+    const f = join(dir, 'mail.mbox');
+    writeFileSync(f, `From x\nFrom: "${'@'.repeat(900)}" <sample@example.com>\nTo: owner@example.com\nSubject: hi\n\n${'<'.repeat(1_000_000)}\n`);
+    expect(time(() => parseMbox(f, { me: ['owner@example.com'] }))).toBeLessThan(1000);
+  });
+  it('a connector line with 4,000 leading spaces in From is read quickly', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'l1c-'));
+    const f = join(dir, 'mail.jsonl');
+    writeFileSync(f, `${JSON.stringify({ id: '1', date: '2026-11-01', from: `${' '.repeat(4000)}x`, to: 'owner@example.com', subject: 'hi', snippet: 'hello' })}\n`);
+    expect(time(() => parseConnectorJsonl(f, { me: ['owner@example.com'] }))).toBeLessThan(200);
+  });
+});
