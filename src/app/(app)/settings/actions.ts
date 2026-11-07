@@ -2,7 +2,7 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireOwner } from '@/lib/auth';
-import { capsProblem } from '@/lib/limits';
+import { capsProblem, alertBudgetProblem, ALERT_BUDGET_MIN } from '@/lib/limits';
 
 const t = (f: FormData, k: string, max = 300) => String(f.get(k) ?? '').trim().slice(0, max);
 const int = (f: FormData, k: string, lo: number, hi: number, d: number) => { const n = Number(f.get(k)); return Number.isInteger(n) && n >= lo && n <= hi ? n : d; };
@@ -17,8 +17,9 @@ export async function saveSettings(f: FormData) {
   const second = Math.max(first + 1, int(f, 'no_reply_second_minutes', 2, 2880, 15));
   const caps = {
     daily_email_cap: int(f, 'daily_email_cap', 10, 100000, 100), monthly_email_cap: int(f, 'monthly_email_cap', 100, 10000000, 3000),
-    reserved_alert_budget: int(f, 'reserved_alert_budget', 5, 1000, 40),
+    reserved_alert_budget: int(f, 'reserved_alert_budget', ALERT_BUDGET_MIN, 1000, -1),
   };
+  if (alertBudgetProblem(caps.reserved_alert_budget)) redirect('/settings?msg=alert_budget_too_low');
   if (capsProblem(caps)) redirect('/settings?msg=caps_too_low');
   const { error } = await db.from('app_settings').update({
     display_name: t(f, 'display_name', 120) || null, timezone: t(f, 'timezone', 64) || 'America/New_York',

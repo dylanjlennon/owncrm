@@ -138,6 +138,11 @@ export function jobStatusView(t: Record<string, Row[]>) {
  * lock gives the real function. scripts/test-db-local.sh tests the real function, including 40
  * calls at once. Keep the two in step.
  */
+function monthStart(now: Date, timeZone: string) {
+  const local = new Date(now.toLocaleString('en-US', { timeZone }));
+  return dayStart(new Date(now.getTime() - (local.getDate() - 1) * 86400000), timeZone);
+}
+
 export function alertAdmit(a: any, t: Record<string, Row[]>, now: number) {
   const s: any = (t.app_settings ?? [])[0] ?? {};
   const outbound = (t.outbound_emails ??= []);
@@ -153,31 +158,49 @@ export function alertAdmit(a: any, t: Record<string, Row[]>, now: number) {
   }
   const today = live.filter((r) => (r.kind === 'alert' || r.kind === 'system') && r.created_at >= start);
   const isLead = (r: Row) => ['lead', 'digest'].includes(r.alert_class ?? (r.lead_id || String(r.subject).startsWith('Many new leads') ? 'lead' : 'system'));
-  const total = today.length; const lead = today.filter(isLead).length; const system = total - lead;
+  const total = today.length; const lead = today.filter(isLead).length;
   const criticalUsed = today.filter((r) => r.alert_class === 'critical').length;
-  const c = { ceiling: ALERT_POLICY.ceiling(s), leadShare: ALERT_POLICY.leadShare(s), systemShare: ALERT_POLICY.systemShare(s), digest: ALERT_POLICY.digestReserve(s), critical: ALERT_POLICY.criticalReserve(s) };
+  const reminderUsed = today.filter((r) => r.alert_class === 'reminder').length;
+  const noticeUsed = today.filter((r) => r.alert_class === 'notice').length;
+  const system = total - lead - reminderUsed - noticeUsed;
+  const c = { ceiling: ALERT_POLICY.ceiling(s), leadShare: ALERT_POLICY.leadShare(s), systemShare: ALERT_POLICY.systemShare(s), digest: ALERT_POLICY.digestReserve(s),
+    critical: ALERT_POLICY.criticalReserve(s), reminder: ALERT_POLICY.reminderReserve(s), notice: ALERT_POLICY.noticeReserve(s) };
+  const unusedCrit = Math.max(0, c.critical - criticalUsed); const unusedRem = Math.max(0, c.reminder - reminderUsed); const unusedNotice = Math.max(0, c.notice - noticeUsed);
   const n = to.length; const cls = a.p_class as string;
-  const free = c.ceiling - Math.max(0, c.critical - criticalUsed) - total;
-  const refuse = () => ({ send: false, reason: cls === 'lead' ? 'hold' : 'ceiling' });
-  if (total + n > c.ceiling) return refuse();
+  const remOver = Math.max(0, reminderUsed - c.reminder);
+  const free = c.ceiling - unusedCrit - unusedNotice - unusedRem - total;
+  const month = live.filter((r) => r.created_at >= monthStart(new Date(now), s.timezone || 'UTC')).length;
   let room: number;
-  if (cls === 'critical') room = c.systemShare - system;
+  if (cls === 'critical') room = Math.min(c.systemShare - system, c.ceiling - total);
   else if (cls === 'system') room = Math.min(c.systemShare - c.critical - system, free);
   else if (cls === 'digest') {
-    room = Math.min(c.leadShare - lead, free);
+    room = Math.min(c.leadShare - remOver - lead, free);
     const last = today.filter((r) => r.alert_class === 'digest').map((r) => r.created_at).sort().at(-1);
-    const hours = Math.max(1, (Date.parse(start) + 86400000 - now) / 3600000 / Math.max(1, c.leadShare - lead));
+    const hours = Math.max(1, (Date.parse(start) + 86400000 - now) / 3600000 / Math.max(1, c.leadShare - remOver - lead));
     if (last && now - Date.parse(last) < hours * 3600000 - 60000) return { send: false, reason: 'paced', hours };
-  } else {
-    room = Math.min(c.leadShare - c.digest - lead, free);
+  } else if (cls === 'lead_reminder') {
     const dayAgo = iso(now - 86400000);
-    if (a.p_flood_key && cls === 'lead' && new Set(live.filter((r) => r.flood_key === a.p_flood_key && r.alert_class === 'lead' && r.created_at >= dayAgo && r.lead_id !== a.p_lead_id).map((r) => r.lead_id)).size >= ALERT_POLICY.perAddressDay) return { send: false, reason: 'hold' };
-    if (a.p_flood_key && cls === 'lead_reminder' && (t.leads ?? []).filter((l) => l.flood_key === a.p_flood_key && l.received_at >= dayAgo).length > ALERT_POLICY.perAddressDay) return { send: false, reason: 'flooded' };
+    if (a.p_flood_key && (t.leads ?? []).filter((l) => l.flood_key === a.p_flood_key && l.received_at >= dayAgo).length > ALERT_POLICY.perAddressDay) return { send: false, reason: 'flooded' };
+    room = Math.min(c.ceiling - unusedCrit - unusedNotice - total, Math.max(unusedRem, c.leadShare - c.digest - remOver - lead));
+  } else {
+    const dayAgo = iso(now - 86400000);
+    if (a.p_flood_key && new Set(live.filter((r) => r.flood_key === a.p_flood_key && r.alert_class === 'lead' && r.created_at >= dayAgo && r.lead_id !== a.p_lead_id).map((r) => r.lead_id)).size >= ALERT_POLICY.perAddressDay) return { send: false, reason: 'hold' };
+    room = Math.min(c.leadShare - c.digest - remOver - lead, free);
   }
-  if (room < n) return refuse();
+  const cap = Number(s.monthly_email_cap ?? Infinity);
+  if (room < n || month + n > cap) {
+    let notice: any;
+    if (s.owner_email && noticeUsed === 0 && total + 1 <= c.ceiling && month + 1 <= cap) {
+      const row = { id: randomUUID(), to_address: s.owner_email, subject: 'Alerts paused for today', body_text: a.p_notice_body ?? '', kind: 'alert', status: 'queued',
+        lead_id: null, household_id: null, alert_class: 'notice', alert_key: 'alerts_paused', flood_key: null, created_at: iso(now) };
+      outbound.push(row);
+      notice = { subject: row.subject, emails: [{ id: row.id, to: row.to_address }] };
+    }
+    return { send: false, reason: cls === 'lead' ? 'hold' : 'ceiling', ...(notice ? { notice } : {}) };
+  }
   const emails = to.map((addr) => {
     const row = { id: randomUUID(), to_address: addr, subject: String(a.p_subject).slice(0, 300), body_text: a.p_body, kind: 'alert', status: 'queued',
-      lead_id: a.p_lead_id ?? null, household_id: a.p_household_id ?? null, alert_class: cls === 'lead_reminder' ? 'lead' : cls, alert_key: a.p_key ?? null,
+      lead_id: a.p_lead_id ?? null, household_id: a.p_household_id ?? null, alert_class: cls === 'lead_reminder' ? 'reminder' : cls, alert_key: a.p_key ?? null,
       flood_key: a.p_flood_key ?? null, created_at: iso(now) };
     outbound.push(row);
     return { id: row.id, to: addr };

@@ -52,8 +52,8 @@ SQL
 [ "$(q -d fresh -c "select count(*) from public.imports where raw_csv like '%6789%' or error_csv like '%6789%' or error_csv like '%cancer%'")" = "0" ] || fail "refused rows came back with the restore"
 [ "$(q -d fresh -c "select error_csv from public.imports where filename = 'new-done.csv'" | head -1)" = "line,problem" ] || fail "the new error file was cleared"
 [ "$(q -d fresh -c "select raw_csv is not null from public.imports where filename = 'new-draft.csv'")" = "t" ] || fail "the new draft was cleared"
-[ "$(q -d fresh -c "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")" = "10/5" ] || fail "restore raised the cap instead of lowering the reserve: $(q -d fresh -c "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")"
-echo "  old raw and error files cleared, new ones kept, cap 10 kept and reserve lowered to 5: ok"
+[ "$(q -d fresh -c "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")" = "10/9" ] || fail "restore raised the cap instead of lowering the reserve: $(q -d fresh -c "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")"
+echo "  old raw and error files cleared, new ones kept, cap 10 kept and reserve lowered to 9 (as close to 15 as the cap allows): ok"
 
 echo "== The alert decision under 40 parallel connections (H1, M1, M3)"
 q -d postgres -c 'create database gate' >/dev/null
@@ -96,10 +96,10 @@ r="$(admit "'critical', array['owner@example.com','backup@example.com'], 'Proble
 echo "$r" | grep -q '"send": true' || fail "after 40 parallel ordinary alerts, \"backup stopped\" was refused: $r"
 [ "$(q -d gate -c "select count(*) from public.outbound_emails where kind = 'alert'")" -le 40 ] || fail "more than 40 alerts today"
 echo "  40 parallel ordinary alerts, then \"backup stopped\" still goes to both: ok"
-# Ordinary alerts saved directly (not through alert_admit) stop where the unused part of the
-# escalation reserve starts; an escalation can still use it.
+# Ordinary alerts saved directly (not through alert_admit) stop where the unused parts of the
+# escalation, reminder and "Alerts paused" reserves start; an escalation can still use its own.
 for i in $(seq 1 40); do q -d gate -c "set role service_role; insert into public.outbound_emails (to_address, subject, body_text, kind, alert_class) values ('owner@example.com', 'direct $i', 'x', 'alert', 'system')" >/dev/null 2>&1 || break; done
-expect="$(q -d gate -c "select 40 - greatest(0, 6 - count(*) filter (where alert_class = 'critical')) from public.outbound_emails where kind = 'alert'")"
+expect="$(q -d gate -c "select 40 - greatest(0, 6 - count(*) filter (where alert_class = 'critical')) - greatest(0, 4 - count(*) filter (where alert_class = 'reminder')) - greatest(0, 1 - count(*) filter (where alert_class = 'notice')) from public.outbound_emails where kind = 'alert'")"
 [ "$(q -d gate -c "select count(*) from public.outbound_emails where kind = 'alert'")" = "$expect" ] || fail "direct inserts did not stop at $expect"
 q -d gate -c "set role service_role; insert into public.outbound_emails (to_address, subject, body_text, kind, alert_class) values ('backup@example.com', 'Problem: Watchdog', 'x', 'alert', 'critical')" >/dev/null 2>&1 || fail "an escalation could not use its reserve"
 echo "  a direct insert can't use the unused part of the escalation reserve: ok"
@@ -126,5 +126,44 @@ SQL
   [ "$(q -d month -c "select count(*) from public.outbound_emails where status <> 'failed'")" = "30" ] || fail "the month total is not 30"
   echo "  alerts may use the rest, and the month stops at exactly 30: ok"
 fi
+
+echo "== Reply reminders keep their own reserve, and one \"Alerts paused\" email (review round 4, M2)"
+q -d postgres -c 'create database rem' >/dev/null
+apply_migrations rem
+q -d rem >/dev/null <<'SQL'
+update public.app_settings set owner_email = 'owner@example.com', backup_email = 'backup@example.com', reserved_alert_budget = 40, daily_email_cap = 100, monthly_email_cap = 3000 where id;
+select public.intake_lead(jsonb_build_object('first_name', 'Rem' || g, 'email', 'rem' || g || '@example.com', 'source', 'Website form', 'channel', 'form')) from generate_series(1, 60) g;
+SQL
+radmit() { q -d rem -c "set role service_role; select public.alert_admit($1)" 2>&1 | tail -1; }
+first="$(q -d rem -c "select id from public.leads order by received_at, id limit 1")"
+radmit "'lead', array['owner@example.com'], 'New lead: Rem1', 'x', 'lead:new:$first', 72, '$first'::uuid, null, 'addr-first', null" | grep -q '"send": true' || fail "the first lead was not alerted"
+# 59 more leads from 59 addresses, 20 at a time, use up the one-by-one share.
+i=0; for id in $(q -d rem -c "select id from public.leads order by received_at, id offset 1"); do
+  i=$((i + 1)); radmit "'lead', array['owner@example.com'], 'New lead', 'x', 'lead:new:$id', 72, '$id'::uuid, null, 'addr$i', null, 'Paused (test)'" >/dev/null &
+  [ $((i % 20)) = 0 ] && wait
+done; wait
+[ "$(q -d rem -c "select count(*) from public.outbound_emails where alert_class = 'lead'")" = "22" ] || fail "new-lead alerts did not stop at 22"
+[ "$(q -d rem -c "select count(*) from public.outbound_emails where alert_class = 'notice'")" = "1" ] || fail "expected exactly one \"Alerts paused\" email after 38 refusals at once"
+r1="$(radmit "'lead_reminder', array['owner@example.com'], 'No reply yet: Rem1', 'x', 'lead:first:$first', 72, '$first'::uuid, null, 'addr-first', null")"
+r2="$(radmit "'lead_reminder', array['owner@example.com','backup@example.com'], 'Still no reply: Rem1', 'x', 'lead:second:$first', 72, '$first'::uuid, null, 'addr-first', null")"
+echo "$r1" | grep -q '"send": true' || fail "the first lead's reminder was refused after a busy day: $r1"
+echo "$r2" | grep -q '"send": true' || fail "the first lead's backup escalation was refused after a busy day: $r2"
+[ "$(q -d rem -c "select count(*) from public.outbound_emails where to_address = 'backup@example.com'")" = "1" ] || fail "the backup contact was not told"
+for k in 1 2 3; do radmit "'system', array['owner@example.com'], 'Problem $k', 'x', 'check:p$k'" >/dev/null; done
+[ "$(q -d rem -c "select count(*) from public.outbound_emails where alert_class = 'notice'")" = "1" ] || fail "a second \"Alerts paused\" email went out"
+echo "  60 leads from 60 addresses: 22 one by one, one \"Alerts paused\" email; the first lead's reminder and backup escalation still go: ok"
+
+echo "== \"Backup stopped\" reaches both people at a small alert number (review round 4, L5)"
+q -d postgres -c 'create database small' >/dev/null
+apply_migrations small
+q -d small -c "update public.app_settings set owner_email = 'owner@example.com', backup_email = 'backup@example.com', reserved_alert_budget = 5, daily_email_cap = 10, monthly_email_cap = 3000 where id" >/dev/null
+sadmit() { q -d small -c "set role service_role; select public.alert_admit($1)" 2>&1 | tail -1; }
+sadmit "'lead', array['owner@example.com'], 'New lead 1', 'x', 'lead:new:a', 72, null, null, 'a', null" >/dev/null
+sadmit "'lead', array['owner@example.com'], 'New lead 2', 'x', 'lead:new:b', 72, null, null, 'b', null" >/dev/null
+sadmit "'digest', array['owner@example.com'], 'Many new leads: 3 waiting', 'x'" >/dev/null
+sadmit "'system', array['owner@example.com'], 'Problem: Domain', 'x', 'check:domain'" >/dev/null
+r="$(sadmit "'critical', array['owner@example.com','backup@example.com'], 'Problem: Nightly backup', 'x', 'check:backup'")"
+echo "$r" | grep -q '"send": true' || fail "at an alert number of 5, \"backup stopped\" was refused: $r"
+echo "  alert number 5: \"backup stopped\" still goes to both: ok"
 
 echo "DATABASE RULES TEST: passed"

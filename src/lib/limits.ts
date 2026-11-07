@@ -17,3 +17,11 @@ export const LEAD_LIMITS = { perIp: 10, perHour: 60, hardPerHour: 600 };
 export function capsProblem(c: { daily_email_cap: number; monthly_email_cap: number; reserved_alert_budget: number }): boolean {
   return c.daily_email_cap <= c.reserved_alert_budget || c.monthly_email_cap <= c.reserved_alert_budget;
 }
+
+// The number held back for alerts must be at least ALERT_BUDGET_MIN (15). Below that the shares
+// are too small: "backup stopped" might not reach both people (review round 4, L5). A value out of
+// range is refused with a message, not quietly replaced.
+export const ALERT_BUDGET_MIN = 15;
+export function alertBudgetProblem(n: number): boolean {
+  return !Number.isInteger(n) || n < ALERT_BUDGET_MIN || n > 1000;
+}

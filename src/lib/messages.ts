@@ -5,6 +5,7 @@ const MESSAGES = {
   saved: { tone: 'ok', text: 'Saved.' },
   import_expired: { tone: 'bad', text: 'That upload expired. Its rows are cleared after a day. Upload the file again.' },
   caps_too_low: { tone: 'bad', text: 'Not saved. The daily and monthly email limits must be higher than the number held back for alerts, or no client email could go out.' },
+  alert_budget_too_low: { tone: 'bad', text: 'Not saved. Hold back at least 15 emails a day for alerts, so "backup stopped" can always reach you and your backup contact.' },
   contact_added: { tone: 'ok', text: 'Contact added.' },
   contact_archived: { tone: 'ok', text: 'Contact archived. You can restore it from its page.' },
   contact_restored: { tone: 'ok', text: 'Contact restored.' },

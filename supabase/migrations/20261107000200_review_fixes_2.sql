@@ -16,7 +16,7 @@ begin
       message = format('Stopped before changing anything: your daily email cap (%s) or monthly cap (%s) is not above the number held for alerts (%s). This update gives alerts their own allowance inside the caps, so the caps must be higher.',
         s.daily_email_cap, s.monthly_email_cap, s.reserved_alert_budget),
       hint = format('Pick one, run it in the SQL editor, then run this file again. Keep your caps and hold fewer emails for alerts: update public.app_settings set reserved_alert_budget = %s where id;  Or raise the caps, if your email plan allows it: update public.app_settings set daily_email_cap = %s, monthly_email_cap = greatest(monthly_email_cap, %s) where id;',
-        greatest(1, least(s.daily_email_cap, s.monthly_email_cap) / 2), s.reserved_alert_budget + 60, s.reserved_alert_budget + 60);
+        greatest(1, least(15, least(s.daily_email_cap, s.monthly_email_cap) - 1), least(s.daily_email_cap, s.monthly_email_cap) / 2), s.reserved_alert_budget + 60, s.reserved_alert_budget + 60);
   end if;
 end $$;
 
@@ -164,10 +164,11 @@ begin
      set birthday = make_date(2000, extract(month from birthday)::int, extract(day from birthday)::int)
    where birthday is not null and extract(year from birthday) <> 2000;
   -- Caps the owner chose are never raised. If a cap is not above the alert reserve, the reserve
-  -- is lowered to half the smaller cap instead, and the restore says so.
+  -- is lowered instead, and the restore says so: to 15 (the Settings minimum) when the caps
+  -- allow it, else to one below the smaller cap, and never below half of it (review round 4, L5).
   if exists (select 1 from public.app_settings where daily_email_cap <= reserved_alert_budget or monthly_email_cap <= reserved_alert_budget) then
-    raise warning 'The restored email caps were not above the number held for alerts. The caps are kept; the number held for alerts is lowered to half the smaller cap. Check it in Settings.';
-    update public.app_settings set reserved_alert_budget = greatest(1, least(daily_email_cap, monthly_email_cap) / 2)
+    raise warning 'The restored email caps were not above the number held for alerts. The caps are kept; the number held for alerts is lowered to fit under them. Check it in Settings.';
+    update public.app_settings set reserved_alert_budget = greatest(1, least(15, least(daily_email_cap, monthly_email_cap) - 1), least(daily_email_cap, monthly_email_cap) / 2)
      where daily_email_cap <= reserved_alert_budget or monthly_email_cap <= reserved_alert_budget;
   end if;
   -- Older versions kept the whole uploaded spreadsheet and copied refused rows (with the SSN or

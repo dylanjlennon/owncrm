@@ -38,7 +38,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <div className="row">
           <label>Daily email limit<input name="daily_email_cap" type="number" defaultValue={s.daily_email_cap} /></label>
           <label>Monthly email limit<input name="monthly_email_cap" type="number" defaultValue={s.monthly_email_cap} /></label>
-          <label>Held back for alerts<input name="reserved_alert_budget" type="number" defaultValue={s.reserved_alert_budget} /></label>
+          <label>Held back for alerts<input name="reserved_alert_budget" type="number" min={15} max={1000} defaultValue={s.reserved_alert_budget} /></label>
         </div>
         <h2>Web form</h2>
         <label>Exact consent wording shown next to the checkbox (stored with each lead)<textarea name="form_consent_wording" defaultValue={s.form_consent_wording} maxLength={1000} /></label>

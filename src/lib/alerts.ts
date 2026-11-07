@@ -18,13 +18,20 @@ import type { Settings } from './settings';
 //   a reserve the other kind can't use.
 // - Inside the lead share, one-by-one lead alerts stop before the end, so there is always room
 //   for the "Many new leads" list.
+// - Reminders ("No reply yet", "Still no reply" to owner and backup) have their own reserve (4 at
+//   the default 40), held out of the day's allowance. New-lead alerts, the lead list and system
+//   alerts can't use it, so a busy day of new leads can't switch off the reminders and the backup
+//   contact escalation (review round 4, M2). Reminders past it count against the lead share.
+// - When an alert is refused because its share or reserve ran out, the owner gets one "Alerts
+//   paused for today" email, from one email kept only for it.
 // - Per address: one web form address (or one person) gets one-by-one alerts and reminders for
 //   up to 3 leads in 24 hours. Past that, that address's leads go in the "Many new leads" list,
 //   without reminders. Leads from every other address keep their own alert, reminders and the
 //   backup contact escalation. One noisy address can't switch the whole form to list mode.
 // - The lead list is paced: at most one an hour, slower when the lead share runs low.
 // - Inside the system share, the last few are only for escalations (alerts that also go to the
-//   backup contact, such as "backup stopped"). The database refuses any other alert there.
+//   backup contact, such as "backup stopped"), never fewer than 2, so both people can be told
+//   (L5). The database refuses any other alert there.
 // - An alert with a key (one per failing check, one per lead and reminder, the flood notice)
 //   goes out once per de-dupe window.
 export const DIGEST_SUBJECT = 'Many new leads';
@@ -35,7 +42,8 @@ const numbers = (s: Settings) => {
   const leadShare = ceiling - systemReserve;
   return {
     ceiling, leadShare, systemShare: ceiling - leadReserve,
-    digestReserve: Math.max(1, Math.ceil(leadShare * 0.2)), criticalReserve: Math.max(1, Math.ceil(ceiling * 0.15)),
+    digestReserve: Math.max(1, Math.ceil(leadShare * 0.2)), criticalReserve: Math.max(2, Math.ceil(ceiling * 0.15)),
+    reminderReserve: Math.max(3, Math.ceil(ceiling * 0.1)), noticeReserve: 1,
   };
 };
 // Mirrors private.alert_numbers in the database. Shown on Status and used by tests only.
@@ -47,7 +55,23 @@ export const ALERT_POLICY = {
   systemShare: (s: Settings) => numbers(s).systemShare,
   digestReserve: (s: Settings) => numbers(s).digestReserve,
   criticalReserve: (s: Settings) => numbers(s).criticalReserve,
+  reminderReserve: (s: Settings) => numbers(s).reminderReserve,
+  noticeReserve: (s: Settings) => numbers(s).noticeReserve,
+  /** New-lead alerts one by one, at most, in a day. */
+  newLeadOneByOne: (s: Settings) => numbers(s).leadShare - numbers(s).digestReserve,
 };
+export const PAUSED_SUBJECT = 'Alerts paused for today';
+
+const PAUSED_WHAT: Record<string, string> = {
+  lead: 'New-lead emails one by one. New leads are still saved, and are listed in the "Many new leads" email when there is room.',
+  lead_reminder: 'Reply reminders ("No reply yet", and "Still no reply" to your backup contact).',
+  digest: 'The "Many new leads" list.',
+  system: 'Problem alerts (a check on Status turned red).',
+  critical: 'Escalations to your backup contact.',
+};
+export function pausedNoticeText(appUrl: string, cls: string) {
+  return `Some alert emails are paused until midnight, because their share of today's alert allowance is used up. This is the only email about it today.\n\nThe first to run out: ${PAUSED_WHAT[cls] ?? cls}\n\nNothing is lost. Every lead and form post is saved. Until midnight, check the CRM yourself:\nNew leads: ${appUrl}/contacts?stage=new+lead\nStatus: ${appUrl}/status\n\nIf this happens on ordinary days, raise "Held back for alerts" in Settings (your email plan's daily limit must allow it).`;
+}
 
 export type AlertInput = {
   subject: string; text: string; alsoBackup?: boolean; leadId?: string | null; householdId?: string | null; key?: string;
@@ -89,10 +113,15 @@ export async function sendAlert(db: SupabaseClient, adapter: EmailAdapter, setti
     p_class: cls, p_to: to, p_subject: a.subject.slice(0, 300), p_body: a.text, p_key: key,
     p_dedupe_hours: a.dedupeHours ?? (cls === 'lead' || cls === 'lead_reminder' ? 72 : ALERT_POLICY.dedupeHours),
     p_lead_id: a.leadId ?? null, p_household_id: a.householdId ?? null, p_flood_key: a.floodKey ?? null, p_daily_max: a.dailyMax ?? null,
+    p_notice_body: pausedNoticeText(appUrl, cls),
   });
   if (error || !data) return { ok: false, sent: 0 };
   if (!data.send) {
     const reason = String(data.reason);
+    // A share ran out and the database saved the one "Alerts paused for today" email: send it.
+    for (const e of (data.notice?.emails ?? []) as { id: string; to: string }[]) {
+      await deliver(db, adapter, { id: e.id, to: e.to, subject: PAUSED_SUBJECT, body: pausedNoticeText(appUrl, cls) }, { settings, appUrl });
+    }
     return { ok: false, sent: 0, held: (reason === 'hold' ? 'digest' : reason) as AlertResult['held'] };
   }
   let sent = 0;

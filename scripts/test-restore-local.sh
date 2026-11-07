@@ -41,7 +41,7 @@ grep -q 'skipped  app_secrets' "$WORK/old.log" || { echo "FAIL: the skipped tabl
 [ "$(lpsql -d dst_old -Atc "select count(*) from pg_constraint where conname in ('people_birthday_month_day_only','app_settings_caps_above_alert_reserve')")" = "2" ] || { echo "FAIL: restore did not put the checks back"; exit 1; }
 [ "$(lpsql -d dst_old -Atc "select count(*) from public.imports where raw_csv is not null or error_csv is not null")" = "0" ] || { echo "FAIL: an old backup brought back a stored upload or refused rows"; exit 1; }
 grep -q 'Cleared the stored upload or old error file on 1 imports' "$WORK/old.log" || { echo "FAIL: the cleared imports were not reported"; exit 1; }
-[ "$(lpsql -d dst_old -Atc "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")" = "10/5" ] || { echo "FAIL: restore changed the cap instead of the alert reserve"; exit 1; }
+[ "$(lpsql -d dst_old -Atc "select daily_email_cap || '/' || reserved_alert_budget from public.app_settings")" = "10/9" ] || { echo "FAIL: restore changed the cap instead of the alert reserve (expected 10/9)"; exit 1; }
 echo "A backup from before the upgrade restores onto the new schema: ok"
 rm -rf "$WORK"
 echo "RESTORE TEST: passed"

@@ -6,18 +6,27 @@
 -- that arrived at the same moment all read the same count, so 40 form posts at once could all
 -- send "New lead", use up the day, and leave no room for "backup stopped" (review round 3, H1;
 -- the same race doubled the lead list and the flood notice, M3).
+--
+-- Review round 4 (still this file, not applied anywhere before): reminders have their own reserve
+-- (M2), one "Alerts paused for today" email when a share runs out (M2), and escalations always
+-- keep room for two people (L5).
+
 
 -- ---------------------------------------------------------------- what each alert is
 -- alert_class: which share of the daily alert allowance the email used.
---   lead      a new-lead alert or a no-reply reminder
+--   lead      a new-lead alert
+--   reminder  a no-reply reminder ("No reply yet", and "Still no reply" to owner and backup)
 --   digest    the "Many new leads" list
 --   system    a problem or notice for the owner
 --   critical  an escalation that also goes to the backup contact ("backup stopped")
+--   notice    the one "Alerts paused for today" email
 -- alert_key: alerts with the same key go out once per de-dupe window.
 -- flood_key: where a lead came from (the web form address or the person, hashed). Used to tell
 --   one noisy address from real leads (M1).
-alter table public.outbound_emails add column if not exists alert_class text
-  check (alert_class is null or alert_class in ('lead','digest','system','critical'));
+alter table public.outbound_emails add column if not exists alert_class text;
+alter table public.outbound_emails drop constraint if exists outbound_emails_alert_class_check;
+alter table public.outbound_emails add constraint outbound_emails_alert_class_check
+  check (alert_class is null or alert_class in ('lead','reminder','digest','system','critical','notice'));
 alter table public.outbound_emails add column if not exists alert_key text check (alert_key is null or length(alert_key) <= 200);
 alter table public.outbound_emails add column if not exists flood_key text check (flood_key is null or length(flood_key) <= 100);
 create index if not exists outbound_alert_key_idx on public.outbound_emails (alert_key, created_at) where alert_key is not null;
@@ -27,19 +36,29 @@ create index if not exists leads_flood_key_idx on public.leads (flood_key, recei
 
 -- ---------------------------------------------------------------- the numbers
 -- The same numbers as ALERT_POLICY in src/lib/alerts.ts (shown on Status and in tests). With the
--- default 40 alerts a day: lead share 28 (one by one up to 22, the last 6 only for the lead
--- list), system share 24 (ordinary problems up to 18, the last 6 only for escalations).
+-- default 40 alerts a day:
+--   lead share 28: new-lead alerts and the lead list. New-lead alerts one by one stop at 22, so 6
+--     are always left for the lead list.
+--   system share 24: ordinary problems up to 18, the last 6 only for escalations.
+--   reminder reserve 4 (M2, round 4): only reply reminders ("No reply yet", and "Still no reply"
+--     to owner and backup) may use it. Reminders past it count against the lead share.
+--   1 kept for the one "Alerts paused for today" email (only an escalation may take it).
+-- Reserves are held out of the whole day's allowance until their own kind uses them. The
+-- escalation reserve is never below 2, so "backup stopped" always has room for the owner and the
+-- backup contact (L5), and the reminder reserve is never below 3.
 create or replace function private.alert_numbers(p_ceiling int) returns jsonb
 language sql immutable set search_path = '' as $$
   with c as (select greatest(1, p_ceiling) as ceiling),
   r as (select ceiling, ceil(ceiling * 0.3)::int as system_reserve, ceil(ceiling * 0.4)::int as lead_reserve,
-               greatest(1, ceil(ceiling * 0.15))::int as critical_reserve from c)
+               greatest(2, ceil(ceiling * 0.15))::int as critical_reserve from c)
   select jsonb_build_object(
     'ceiling', ceiling,
     'lead_share', ceiling - system_reserve,
     'system_share', ceiling - lead_reserve,
     'digest_reserve', greatest(1, ceil((ceiling - system_reserve) * 0.2))::int,
     'critical_reserve', critical_reserve,
+    'reminder_reserve', greatest(3, ceil(ceiling * 0.1))::int,
+    'notice_reserve', 1,
     -- One web form address (or one person) gets one-by-one alerts and reminders for this many
     -- leads in 24 hours. More than that and its leads go in the lead list, without reminders.
     'per_address_day', 3)
@@ -65,6 +84,9 @@ declare
   v_consent text;
   v_alerts int;
   v_critical int;
+  v_notice int;
+  v_reminder int;
+  v_held int;
   n jsonb;
 begin
   v_to := private.normalize_contact('email', new.to_address);
@@ -87,15 +109,23 @@ begin
       raise exception 'blocked_not_owner: alerts only go to the owner or backup contact';
     end if;
     n := private.alert_numbers(s.reserved_alert_budget);
-    select count(*), count(*) filter (where alert_class = 'critical') into v_alerts, v_critical from public.outbound_emails
+    select count(*), count(*) filter (where alert_class = 'critical'), count(*) filter (where alert_class = 'notice'),
+           count(*) filter (where alert_class = 'reminder')
+      into v_alerts, v_critical, v_notice, v_reminder from public.outbound_emails
      where kind in ('alert','system') and status <> 'failed' and created_at >= v_today_start;
     if v_alerts >= s.reserved_alert_budget then
       raise exception 'blocked_alert_budget: today''s alert allowance is used up';
     end if;
-    -- The part of the escalation reserve that escalations have not used yet stays free.
-    if coalesce(new.alert_class, '') <> 'critical'
-       and v_alerts >= s.reserved_alert_budget - greatest(0, (n->>'critical_reserve')::int - v_critical) then
+    -- The unused part of each reserve stays free for its own kind: the "Alerts paused" email,
+    -- escalations, and reply reminders.
+    -- (Escalations may use any of it: they matter more than the "Alerts paused" email.)
+    v_held := greatest(0, (n->>'notice_reserve')::int - v_notice) + greatest(0, (n->>'critical_reserve')::int - v_critical);
+    if coalesce(new.alert_class, '') not in ('critical', 'notice') and v_alerts >= s.reserved_alert_budget - v_held then
       raise exception 'blocked_alert_budget: the rest of today''s alerts are held for escalations';
+    end if;
+    v_held := v_held + greatest(0, (n->>'reminder_reserve')::int - v_reminder);
+    if coalesce(new.alert_class, '') not in ('critical', 'notice', 'reminder') and v_alerts >= s.reserved_alert_budget - v_held then
+      raise exception 'blocked_alert_budget: the rest of today''s alerts are held for reply reminders and escalations';
     end if;
     if v_month_all >= s.monthly_email_cap then
       raise exception 'blocked_budget: this month''s email allowance is used up';
@@ -160,15 +190,21 @@ end $$;
 --   keys a day that share the part of p_key before the first ":" (for example one "needs
 --   review" email per sender, at most 5 senders a day).
 -- p_flood_key: where a lead came from, for the per-address rule.
+-- p_notice_body: the text of the "Alerts paused for today" email, in case this alert finds its
+--   share used up (the app writes it, because it knows the app's address).
 -- Returns {"send": true, "emails": [{"id": ..., "to": ...}]} or {"send": false, "reason": ...}, where reason is one of
 -- no_owner, duplicate, daily_max, ceiling, hold (list the lead in the next "Many new leads"),
 -- flooded (a reminder for a lead from a noisy address) or paced (a lead list went out too
--- recently).
+-- recently). When the refusal is because a share or reserve ran out (ceiling, or hold for lack
+-- of room), and the "Alerts paused for today" email has not gone today, that email is saved too,
+-- from its own reserve, and returned as "notice": {"emails": [...], "subject": ...} (M2).
+drop function if exists public.alert_admit(text, text[], text, text, text, numeric, uuid, uuid, text, int);
 create or replace function public.alert_admit(
   p_class text, p_to text[], p_subject text, p_body text,
   p_key text default null, p_dedupe_hours numeric default 12,
   p_lead_id uuid default null, p_household_id uuid default null,
-  p_flood_key text default null, p_daily_max int default null
+  p_flood_key text default null, p_daily_max int default null,
+  p_notice_body text default null
 ) returns jsonb
 language plpgsql set search_path = '' as $$
 declare
@@ -177,7 +213,8 @@ declare
   v_to text[];
   v_count int;
   v_start timestamptz;
-  v_total int; v_lead int; v_system int; v_critical int; v_month int;
+  v_total int; v_lead int; v_system int; v_critical int; v_reminder int; v_notice int; v_month int;
+  v_unused_crit int; v_unused_rem int; v_unused_notice int; v_rem_over int;
   v_room int;
   v_free int;
   v_last timestamptz;
@@ -185,7 +222,9 @@ declare
   v_emails jsonb := '[]';
   v_id uuid;
   v_addr text;
-  v_class text := case when p_class = 'lead_reminder' then 'lead' else p_class end;
+  v_owner text;
+  v_paused jsonb := null;
+  v_class text := case when p_class = 'lead_reminder' then 'reminder' else p_class end;
 begin
   if not private.is_owner_or_backend() then
     raise exception 'not_owner: alerts are for the app server';
@@ -216,52 +255,74 @@ begin
   -- a lead list counts as lead, anything else as system.
   select count(*),
          count(*) filter (where coalesce(alert_class, case when lead_id is not null or subject like 'Many new leads%' then 'lead' else 'system' end) in ('lead','digest')),
-         count(*) filter (where alert_class = 'critical')
-    into v_total, v_lead, v_critical
+         count(*) filter (where alert_class = 'critical'),
+         count(*) filter (where alert_class = 'reminder'),
+         count(*) filter (where alert_class = 'notice')
+    into v_total, v_lead, v_critical, v_reminder, v_notice
     from public.outbound_emails
    where kind in ('alert','system') and status <> 'failed' and created_at >= v_start;
-  v_system := v_total - v_lead;
-  -- What everything but an escalation may still use today: the escalation reserve stays free,
-  -- less what escalations already used.
-  v_free := (n->>'ceiling')::int - greatest(0, (n->>'critical_reserve')::int - v_critical) - v_total;
+  v_system := v_total - v_lead - v_reminder - v_notice;
+  -- The unused part of each reserve stays free for its own kind. Reminders past their reserve
+  -- count against the lead share.
+  v_unused_crit := greatest(0, (n->>'critical_reserve')::int - v_critical);
+  v_unused_rem := greatest(0, (n->>'reminder_reserve')::int - v_reminder);
+  v_unused_notice := greatest(0, (n->>'notice_reserve')::int - v_notice);
+  v_rem_over := greatest(0, v_reminder - (n->>'reminder_reserve')::int);
+  -- What a new-lead alert, the lead list or a system alert may still use today.
+  v_free := (n->>'ceiling')::int - v_unused_crit - v_unused_notice - v_unused_rem - v_total;
   select count(*) into v_month from public.outbound_emails
    where created_at >= (date_trunc('month', now() at time zone s.timezone)) at time zone s.timezone and status <> 'failed';
 
-  if v_total + v_count > (n->>'ceiling')::int or v_month + v_count > s.monthly_email_cap then
-    return jsonb_build_object('send', false, 'reason', case when p_class = 'lead' then 'hold' else 'ceiling' end);
-  end if;
   if p_class = 'critical' then
-    v_room := (n->>'system_share')::int - v_system;
+    -- Escalations may use their own reserve and anything else left in the system share, even the
+    -- email kept for "Alerts paused": "backup stopped" matters more.
+    v_room := least((n->>'system_share')::int - v_system, (n->>'ceiling')::int - v_total);
   elsif p_class = 'system' then
-    v_room := (n->>'system_share')::int - (n->>'critical_reserve')::int - v_system;
-    v_room := least(v_room, v_free);
+    v_room := least((n->>'system_share')::int - (n->>'critical_reserve')::int - v_system, v_free);
   elsif p_class = 'digest' then
-    v_room := (n->>'lead_share')::int - v_lead;
-    v_room := least(v_room, v_free);
+    -- The lead list may use the whole lead share.
+    v_room := least((n->>'lead_share')::int - v_rem_over - v_lead, v_free);
     -- Paced so the lead share lasts until midnight: at most one an hour, slower when it runs low.
     select max(created_at) into v_last from public.outbound_emails
      where alert_class = 'digest' and status <> 'failed' and created_at >= v_start;
-    v_hours := greatest(1, extract(epoch from (v_start + interval '1 day' - now())) / 3600 / greatest(1, (n->>'lead_share')::int - v_lead));
+    v_hours := greatest(1, extract(epoch from (v_start + interval '1 day' - now())) / 3600 / greatest(1, (n->>'lead_share')::int - v_rem_over - v_lead));
     if v_last is not null and now() - v_last < make_interval(secs => (v_hours * 3600 - 60)::double precision) then
       return jsonb_build_object('send', false, 'reason', 'paced', 'hours', round(v_hours, 1));
     end if;
+  elsif p_class = 'lead_reminder' then
+    -- Reminders may use their own reserve, or what is left of the one-by-one part of the lead
+    -- share if that is more, but never the escalation or "Alerts paused" reserves. New-lead
+    -- alerts can't use the reminder reserve, so a busy day can't switch reminders off (M2).
+    if p_flood_key is not null and (
+      select count(*) from public.leads where flood_key = p_flood_key and received_at >= now() - interval '24 hours') > (n->>'per_address_day')::int then
+      return jsonb_build_object('send', false, 'reason', 'flooded');
+    end if;
+    v_room := least((n->>'ceiling')::int - v_unused_crit - v_unused_notice - v_total,
+                    greatest(v_unused_rem, (n->>'lead_share')::int - (n->>'digest_reserve')::int - v_rem_over - v_lead));
   else
-    -- One-by-one lead alerts stop short of the part of the lead share kept for the lead list.
-    v_room := (n->>'lead_share')::int - (n->>'digest_reserve')::int - v_lead;
-    v_room := least(v_room, v_free);
-    if p_flood_key is not null and p_class = 'lead' and (
+    -- New-lead alerts one by one stop short of the lead list's part of the lead share.
+    if p_flood_key is not null and (
       select count(distinct lead_id) from public.outbound_emails
        where flood_key = p_flood_key and alert_class = 'lead' and status <> 'failed'
          and created_at >= now() - interval '24 hours' and lead_id is distinct from p_lead_id) >= (n->>'per_address_day')::int then
       return jsonb_build_object('send', false, 'reason', 'hold');
     end if;
-    if p_flood_key is not null and p_class = 'lead_reminder' and (
-      select count(*) from public.leads where flood_key = p_flood_key and received_at >= now() - interval '24 hours') > (n->>'per_address_day')::int then
-      return jsonb_build_object('send', false, 'reason', 'flooded');
-    end if;
+    v_room := least((n->>'lead_share')::int - (n->>'digest_reserve')::int - v_rem_over - v_lead, v_free);
   end if;
-  if v_room < v_count then
-    return jsonb_build_object('send', false, 'reason', case when p_class = 'lead' then 'hold' else 'ceiling' end);
+
+  if v_room < v_count or v_month + v_count > s.monthly_email_cap then
+    -- A share or reserve ran out. The owner gets one "Alerts paused for today" email, from its own
+    -- reserve, the first time this happens in a day.
+    v_owner := nullif(btrim(coalesce(s.owner_email, '')), '');
+    if v_owner is not null and v_notice = 0 and v_total + 1 <= (n->>'ceiling')::int and v_month + 1 <= s.monthly_email_cap then
+      insert into public.outbound_emails (to_address, subject, body_text, kind, alert_class, alert_key)
+      values (v_owner, 'Alerts paused for today',
+              coalesce(p_notice_body, 'Some alert emails are paused until midnight, because their share of today''s alert allowance is used up. Every lead is still saved. Open the Status page.'),
+              'alert', 'notice', 'alerts_paused')
+      returning id into v_id;
+      v_paused := jsonb_build_object('subject', 'Alerts paused for today', 'emails', jsonb_build_array(jsonb_build_object('id', v_id, 'to', v_owner)));
+    end if;
+    return jsonb_strip_nulls(jsonb_build_object('send', false, 'reason', case when p_class = 'lead' then 'hold' else 'ceiling' end, 'notice', v_paused));
   end if;
 
   foreach v_addr in array v_to loop
@@ -272,7 +333,7 @@ begin
   end loop;
   return jsonb_build_object('send', true, 'emails', v_emails);
 end $$;
-revoke all on function public.alert_admit(text, text[], text, text, text, numeric, uuid, uuid, text, int) from public, anon;
-grant execute on function public.alert_admit(text, text[], text, text, text, numeric, uuid, uuid, text, int) to authenticated, service_role;
+revoke all on function public.alert_admit(text, text[], text, text, text, numeric, uuid, uuid, text, int, text) from public, anon;
+grant execute on function public.alert_admit(text, text[], text, text, text, numeric, uuid, uuid, text, int, text) to authenticated, service_role;
 revoke all on function private.alert_numbers(int) from public, anon;
 grant execute on function private.alert_numbers(int) to authenticated, service_role;

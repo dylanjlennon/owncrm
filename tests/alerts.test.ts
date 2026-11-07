@@ -96,7 +96,9 @@ describe('M2: alert budget with a ceiling and a reserve for new-lead alerts', ()
     const adapter = new MockAdapter();
     const s = (await db.from('app_settings').select('*').single()).data;
     for (let i = 0; i < 60; i++) await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `New lead: Spam ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', floodKey: `lead:addr${i}` });
-    expect(adapter.sent.length).toBe(ALERT_POLICY.leadShare(s) - ALERT_POLICY.digestReserve(s));
+    expect(adapter.sent.filter((m) => m.subject.startsWith('New lead'))).toHaveLength(ALERT_POLICY.leadShare(s) - ALERT_POLICY.digestReserve(s));
+    // When the share runs out, the owner gets one "Alerts paused for today" email, once.
+    expect(adapter.sent.filter((m) => m.subject === 'Alerts paused for today')).toHaveLength(1);
   });
 });
 
