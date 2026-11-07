@@ -1,7 +1,7 @@
 {
- "ran_at": "2026-11-06T18:08:25.062Z",
- "passed": 90,
- "total": 90,
+ "ran_at": "2026-11-07T04:45:47.659Z",
+ "passed": 103,
+ "total": 103,
  "results": [
   {
    "name": "logged out is sent to login",
@@ -44,6 +44,11 @@
    "detail": ""
   },
   {
+   "name": "a new device emails the owner and the backup contact",
+   "ok": true,
+   "detail": ""
+  },
+  {
    "name": "first-run screen shows before anything else",
    "ok": true,
    "detail": ""
@@ -70,6 +75,31 @@
   },
   {
    "name": "follow-up due today is on Today",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a follow-up can be edited",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a birthday is stored as month and day only (year 2000, no age)",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "upcoming birthdays show on Today",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "snooze moves a follow-up to tomorrow",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a snoozed follow-up leaves Today",
    "ok": true,
    "detail": ""
   },
@@ -129,6 +159,11 @@
    "detail": ""
   },
   {
+   "name": "the lead form can be framed only by the listed site",
+   "ok": true,
+   "detail": ""
+  },
+  {
    "name": "oversized form post is refused",
    "ok": true,
    "detail": ""
@@ -155,6 +190,11 @@
   },
   {
    "name": "\"I replied\" stops the reminders",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "an \"I replied\" link works only once",
    "ok": true,
    "detail": ""
   },
@@ -349,6 +389,26 @@
    "detail": ""
   },
   {
+   "name": "client mail stops at the daily limit minus the alert reserve",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "an alert still goes out when client mail is blocked",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "status says plainly that the deploy date is not an update check",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "a failing check emails once, not on every scheduler run",
+   "ok": true,
+   "detail": ""
+  },
+  {
    "name": "history page shows the firm-policy and not-legal-advice notice",
    "ok": true,
    "detail": ""
@@ -434,7 +494,7 @@
    "detail": ""
   },
   {
-   "name": "no sideways scroll at phone width: /contacts/cf643fba-dd98-40f2-8549-fa56c6b3678b",
+   "name": "no sideways scroll at phone width: /contacts/814b8c55-93e1-4740-9354-86f19fbb33ca",
    "ok": true,
    "detail": ""
   },
@@ -445,6 +505,11 @@
   },
   {
    "name": "no sideways scroll at phone width: /history",
+   "ok": true,
+   "detail": ""
+  },
+  {
+   "name": "no page broke the content security policy",
    "ok": true,
    "detail": ""
   },

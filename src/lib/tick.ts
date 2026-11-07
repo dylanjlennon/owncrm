@@ -155,6 +155,7 @@ export async function runTick(d: TickDeps) {
     const checks = await loadHealth(d.db, s);
     const red = failingChecks(checks).filter((c) => c.key !== 'tick');
     for (const c of red) outcomes[`check:${c.key}`] = false;
+    const labels = Object.fromEntries(red.map((c) => [`check:${c.key}`, c.label]));
     await alertFailingChecks(d, s, checks);
 
     if (s.all_clear_enabled && await dueOncePerDay(d.db, 'all_clear', s, d.now, s.all_clear_local_hour)) {
@@ -181,7 +182,7 @@ export async function runTick(d: TickDeps) {
     // Rate limit rows go after a day. "Link used" rows are kept longer than any short link lives.
     await d.db.from('rate_limits').delete().lt('window_start', new Date(d.now.getTime() - 86400000).toISOString()).not('bucket', 'like', 'once:%');
     await d.db.from('rate_limits').delete().lt('window_start', new Date(d.now.getTime() - USED_LINK_MEMORY_SECONDS * 1000).toISOString()).like('bucket', 'once:%');
-    const failed = Object.entries(outcomes).filter(([, v]) => !v).map(([k]) => k);
+    const failed = Object.entries(outcomes).filter(([, v]) => !v).map(([k]) => labels[k] ?? k);
     // The scheduler itself ran. Failed checks show on their own rows and go to the watchdog.
     return { ok: true, detail: failed.length ? `Ran. These checks failed: ${failed.join(', ')}` : 'All scheduled work ran.', value: failed };
   });

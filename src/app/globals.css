@@ -153,3 +153,4 @@ form.snooze select { width: auto; }
 .u-contents { display: contents; }
 .u-pre { white-space: pre-wrap; max-height: 260px; overflow: auto; background: #f0f3f1; padding: 10px; }
 .u-offscreen { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+.followup-actions { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }

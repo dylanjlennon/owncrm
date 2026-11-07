@@ -23,12 +23,14 @@ export function FollowUpItem({ task, back, who }: { task: any; back: string; who
           </form>
         </details>
       </span>
+      <span className="followup-actions">
       <form action={snoozeFollowUp} className="inline snooze">
         <input type="hidden" name="id" value={task.id} /><input type="hidden" name="back" value={back} />
         <select name="snooze" aria-label="Snooze until" defaultValue="1d">{Object.entries(SNOOZE_CHOICES).map(([k, c]) => <option key={k} value={k}>{c.label}</option>)}</select>
         <button className="quiet" type="submit">Snooze</button>
       </form>
       <form action={markDone} className="inline"><input type="hidden" name="id" value={task.id} /><input type="hidden" name="back" value={back} /><button className="quiet" type="submit">Done</button></form>
+      </span>
     </li>
   );
 }
