@@ -40,3 +40,21 @@ describe('a rescued summary shows at the top of the contact', () => {
     expect(page).toContain('Your rescue summary is at the top of this page.');
   });
 });
+
+describe('smaller go-live confusions from the walkthrough', async () => {
+  const { testAlertMissing, calmStrip, GOLIVE_ITEMS } = await import('@/lib/health');
+  const { messageFor } = await import('@/lib/messages');
+  it('the test alert says to set "Send from" first instead of a vague failure', () => {
+    expect(testAlertMissing({ owner_email: 'pat.sample@example.com', sender_email: null })).toBe('test_alert_no_sender');
+    expect(testAlertMissing({ owner_email: null, sender_email: 'crm@mail.example.com' })).toBe('test_alert_no_owner');
+    expect(testAlertMissing({ owner_email: 'pat.sample@example.com', sender_email: 'crm@mail.example.com' })).toBeNull();
+    expect(messageFor('test_alert_no_sender')!.text).toMatch(/Set "Send from" in Settings first/);
+  });
+  it('the go-live item names both settings it needs', () => {
+    expect(GOLIVE_ITEMS.find((i) => i.key === 'ownerEmail')!.label).toMatch(/alert email and "Send from" address/);
+  });
+  it('the top bar does not say "All checks passing" before go-live', () => {
+    expect(calmStrip(false)).toMatch(/^Setup not finished/);
+    expect(calmStrip(true)).toBe('All checks passing.');
+  });
+});

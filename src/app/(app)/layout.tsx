@@ -6,7 +6,7 @@ import { APP_NAME } from '@/lib/config';
 import { getCounts } from '@/lib/counts';
 import { getSettings } from '@/lib/settings';
 import { loadHealth } from '@/lib/health-load';
-import { failingChecks } from '@/lib/health';
+import { failingChecks, calmStrip } from '@/lib/health';
 import { env } from '@/lib/env';
 import { logout } from '../login/actions';
 
@@ -45,8 +45,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className={`strip ${failing.length ? 'bad' : ''}`} role={failing.length ? 'alert' : 'status'} data-testid="health-strip">
         {failing.length
           ? <span>Something is broken: {failing.map((f) => f.label).join(', ')}. <Link href="/status">Open Status</Link></span>
-          : <span>All checks passing. <Link href="/status">Status</Link></span>}
-        {!settings.golive_completed_at && <span>Go-live checks not finished.</span>}
+          : <span>{calmStrip(!!settings.golive_completed_at)} <Link href="/status">{settings.golive_completed_at ? 'Status' : 'Open Status'}</Link></span>}
+        {failing.length > 0 && !settings.golive_completed_at && <span>Go-live checks not finished.</span>}
         <span className="who">You are the IT department.</span>
       </div>
       <div className="shell">

@@ -44,6 +44,8 @@ const MESSAGES = {
   test_lead_fail: { tone: 'bad', text: 'Test lead failed. See the Status page.' },
   test_alert_sent: { tone: 'ok', text: 'Test alert sent. Check your email, then confirm below.' },
   test_alert_failed: { tone: 'bad', text: 'Test alert could not be sent. Check your email settings.' },
+  test_alert_no_owner: { tone: 'bad', text: 'Set "Your alert email" in Settings first. The test alert goes there.' },
+  test_alert_no_sender: { tone: 'bad', text: 'Set "Send from" in Settings first. The test alert is sent from that address, on your verified email subdomain.' },
   golive_blocked: { tone: 'bad', text: 'Go-live is not finished. Every check below has to pass first.' },
   golive_done: { tone: 'ok', text: 'Go-live checks passed.' },
   token_revoked: { tone: 'ok', text: 'Token revoked. It stopped working right now.' },
