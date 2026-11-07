@@ -13,6 +13,7 @@ You need: the encrypted backup file and its manifest (GitHub, your repository, A
      bash scripts/restore-to-blank.sh <backup file .age> <manifest file .json>
    ```
    It refuses a project that already has contacts, applies every migration, loads the data, and compares every table's row count with the manifest. You should see "Restore verified: every table matches the backup."
+   An older backup can hold a table that a later version removed (for example `app_secrets`, the old AI key setting, removed in November 2026). The script leaves that table out, prints "Skipped app_secrets", and checks every other table. That is expected and nothing you need is lost.
 5. **If a count doesn't match,** stop. Don't switch over. Ask your agent to explain the line that says MISMATCH.
 6. **Make your login.** In the new project: Authentication, turn off signups, turn on TOTP, Add user, then in the SQL editor `insert into public.app_owner (user_id) values ('<your user id>');`. Logins aren't in backups on purpose.
 7. **Switch over (real restore only).** Put the new project's URL and keys in Vercel's settings and redeploy. Re-enroll your authenticator.

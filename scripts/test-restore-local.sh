@@ -20,5 +20,20 @@ if SUPABASE_DB_URL="$URL/src" BACKUP_AGE_RECIPIENT="$RECIP" BACKUP_DIR="$WORK/d"
 echo "Sharp drop in rows is caught: ok"
 if TARGET_DB_URL="$URL/dst" AGE_IDENTITY_FILE="$WORK/key.txt" SKIP_MIGRATIONS=1 bash scripts/restore-to-blank.sh "$(ls "$WORK"/b/*.age)" "$WORK/b/manifest-latest.json" >/dev/null 2>&1; then echo "FAIL: restore into a non-blank database was allowed"; exit 1; fi
 echo "Restore refuses a database that already has contacts: ok"
+# A backup taken BEFORE the Nov 2026 review migrations (it still holds public.app_secrets, since
+# dropped) must restore onto today's schema.
+lpsql -d postgres -c 'create database oldsrc' -c 'create database dst_old' >/dev/null
+lpsql -d oldsrc -f supabase/tests/auth-shim.sql >/dev/null
+for f in supabase/migrations/*.sql; do case "$(basename "$f")" in 20261107*) continue;; esac; lpsql -d oldsrc -f "$f" >/dev/null; done
+lpsql -d oldsrc -c "insert into public.households (display_name) values ('Testy McExample'), ('Sample Example')" \
+  -c "insert into public.app_secrets (name, ciphertext) values ('ai_api_key', 'fake-ciphertext-for-test')" >/dev/null
+SUPABASE_DB_URL="$URL/oldsrc" BACKUP_AGE_RECIPIENT="$RECIP" BACKUP_DIR="$WORK/old" node scripts/backup.mjs >/dev/null
+grep -q '"app_secrets"' "$WORK/old/manifest-latest.json" || { echo "FAIL: the old backup should list app_secrets"; exit 1; }
+lpsql -d dst_old -f supabase/tests/auth-shim.sql >/dev/null
+TARGET_DB_URL="$URL/dst_old" AGE_IDENTITY_FILE="$WORK/key.txt" bash scripts/restore-to-blank.sh "$(ls "$WORK"/old/*.age)" "$WORK/old/manifest-latest.json" >"$WORK/old.log" 2>&1 \
+  || { cat "$WORK/old.log"; echo "FAIL: a backup from before the upgrade did not restore"; exit 1; }
+[ "$(lpsql -d dst_old -Atc 'select count(*) from public.households')" = "2" ] || { echo "FAIL: old backup restored the wrong number of contacts"; exit 1; }
+grep -q 'skipped  app_secrets' "$WORK/old.log" || { echo "FAIL: the skipped table was not reported"; exit 1; }
+echo "A backup from before the upgrade restores onto the new schema: ok"
 rm -rf "$WORK"
 echo "RESTORE TEST: passed"
