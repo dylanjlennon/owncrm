@@ -119,3 +119,27 @@ describe('honesty fixes', () => {
     expect(s).toMatch(/One-click unsubscribe carries its token in the address/);
   });
 });
+
+describe('Review round 4: the docs say the new rules plainly', async () => {
+  const { ALERT_POLICY } = await import('@/lib/alerts');
+  const s = { reserved_alert_budget: 40 } as any;
+  it('HOW-TO gives the default alert numbers, and they match the code', () => {
+    const h = read('HOW-TO.md');
+    expect(h).toMatch(new RegExp(`up to ${ALERT_POLICY.newLeadOneByOne(s)} "New lead" emails a day`));
+    expect(h).toMatch(new RegExp(`${ALERT_POLICY.digestReserve(s)} more are kept for the "Many new leads" list`));
+    expect(h).toMatch(new RegExp(`${ALERT_POLICY.reminderReserve(s)} are kept only for "No reply yet" and "Still no reply"`));
+    expect(h).toMatch(new RegExp(`up to ${ALERT_POLICY.systemShare(s) - ALERT_POLICY.criticalReserve(s)} emails about red checks\\. ${ALERT_POLICY.criticalReserve(s)} more are kept for escalations`));
+    expect(h).toMatch(/One "Alerts paused for today" email/);
+    expect(h).toMatch(/at least 15/);
+  });
+  it('HOW-TO, FAQ and SECURITY explain shared addresses and proxies (L6)', () => {
+    for (const f of ['HOW-TO.md', 'SECURITY.md', 'FAQ.md']) {
+      expect(read(f), f).toMatch(/office network/);
+      expect(read(f), f).toMatch(/Cloudflare/);
+    }
+  });
+  it('HOW-TO and SECURITY say a lead site is known by its sending address only (M1)', () => {
+    expect(read('HOW-TO.md')).toMatch(/only by the address it was sent from/);
+    expect(read('SECURITY.md')).toMatch(/only by its From address's domain/);
+  });
+});
