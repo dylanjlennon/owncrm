@@ -15,3 +15,12 @@ rescue/.work/
 
 # Local review reports (they name the test project; never publish)
 docs/review/
+
+# Backstops for things that must never be committed. The rescue tools refuse a work folder inside
+# this code folder, and the docs say to keep the backup key in your home folder, but just in case:
+# a folder literally named "~" (made when a terminal did not expand ~), a rescue work folder,
+# and a private backup key.
+/~/
+owncrm-rescue/
+*backup-key*.txt
+*age-key*.txt

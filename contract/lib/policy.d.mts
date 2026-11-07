@@ -10,3 +10,6 @@ export function looksLikeInstructions(text: string | null | undefined): boolean;
 export const HEALTH_LEGAL_RE: RegExp;
 export function mentionsHealthOrLegal(text: string | null | undefined): boolean;
 export const PROTECTED: string[];
+export function protectedTraitMatch(text: string | null | undefined): string | null;
+export function healthOrLegalMatch(text: string | null | undefined): string | null;
+export function instructionMatch(text: string | null | undefined): string | null;

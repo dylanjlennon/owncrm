@@ -7,6 +7,10 @@ import { classifyTopic } from '../../contract/lib/policy.mjs';
 import { looksLikeInstructions } from '../../contract/lib/policy.mjs';
 
 export const hash = (/** @type {string} */ s) => createHash('sha256').update(s).digest('hex').slice(0, 24);
+// IDs that go into the contract folder. Letters only: a hex hash can hold a run of exactly 9
+// digits ("d643082467bc"), which the contract check rightly reads as a possible Social Security
+// or routing number, and then the whole person was refused.
+export const letterId = (/** @type {string} */ s) => hash(s).replace(/[0-9]/g, (d) => 'ghijklmnop'[Number(d)]);
 
 /** @param {string} kind @param {string} value */
 export function normalizeHandle(kind, value) {

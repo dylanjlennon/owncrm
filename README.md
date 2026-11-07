@@ -46,26 +46,59 @@ The data shape lives in [`/contract`](contract/README.md). Read [docs/TWO-PHASES
 
 ## Step 0: get the download and the tools
 
-Do this once, before any prompt. It takes about 20 minutes.
+Do this once, before any prompt. It takes 20 to 45 minutes. You type a few commands yourself here. After this, your AI agent types the rest.
 
-1. **Install Node.js 22.13 or newer.** Go to nodejs.org and download the LTS installer (22 or newer).
+**How to open the window you type commands in:**
+- Mac: press Command and Space, type Terminal, press Return.
+- Windows: press the Windows key, type PowerShell, press Enter. Use "Windows PowerShell", not "Command Prompt".
+
+1. **Get an AI agent that can run commands on your computer.** This is a different thing from a chat in your web browser. ChatGPT or Claude.ai in a browser can't open files or run programs on your computer, so they can't do any of this. Pick one:
+   - **Claude Code** (needs a paid Claude plan: Pro, Max, Team or Enterprise. The free plan doesn't include it).
+     - Mac, in Terminal: `curl -fsSL https://claude.ai/install.sh | bash`
+     - Windows, in PowerShell: `irm https://claude.ai/install.ps1 | iex`
+     - Close the window, open a new one, and type `claude --version`. It should print a version number. If it says "command not found" or "not recognized", ask Anthropic's install page (code.claude.com, Setup) for the "Fix your PATH" step.
+     - Prefer no terminal? The Claude Desktop app (claude.com/download) has Claude Code built in. Open this folder in its Code tab.
+   - **Codex** from OpenAI (needs a paid ChatGPT plan: Plus or higher).
+     - Mac, in Terminal: `curl -fsSL https://chatgpt.com/codex/install.sh | sh`
+     - Windows, in PowerShell: `powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"`
+     - Then type `codex` and choose "Sign in with ChatGPT".
+   - **Others that work:** Cursor (its Agent mode), Gemini CLI, or any agent that can read files and run commands in a folder. Follow that tool's own install page.
+
+   These commands come from each company's install page in November 2026. If one fails, check that page for the current command.
+2. **Install Node.js.** Go to nodejs.org and download the **LTS** installer (v26 in November 2026).
    - Mac: open the downloaded .pkg and click through.
    - Windows: open the downloaded .msi and click through. Leave "Add to PATH" ticked.
-   - Check it worked: open Terminal (Mac) or PowerShell (Windows) and type `node -v`. It should say v22.13 or higher.
-2. **Install git.**
+   - Check it worked: open a new Terminal or PowerShell window and type `node -v`. It should say v22.13 or higher.
+   - Supported: Node.js 22.13 or newer. Tested on 22 and 26. Node 22 gets security fixes only until April 2027, so pick the LTS if you are installing now.
+3. **Install git.**
    - Mac: in Terminal type `git --version`. If it isn't there, macOS offers to install the developer tools. Say yes.
    - Windows: download "Git for Windows" from git-scm.com and click through with the default choices.
-3. **Get the download.** In Terminal or PowerShell:
+4. **Get the download.** In Terminal or PowerShell, type exactly:
    ```
-   git clone https://github.com/YOUR-GITHUB-NAME/owncrm
+   git clone https://github.com/dylanjlennon/owncrm
    cd owncrm
    npm install
    ```
-   (The address is a placeholder until the public repository is published. Use the address you were given.)
-   No git? On the repository page, press Code, Download ZIP, unzip it, and open that folder instead.
-4. **Open your AI agent in that folder.** Claude Code: type `claude` in the same Terminal window. Codex, Cursor or Gemini CLI: open the `owncrm` folder in it. Then go to "Start here" below.
+   You may see lines that start with "npm warn deprecated". They are normal.
+   No git? On https://github.com/dylanjlennon/owncrm press Code, Download ZIP, unzip it, and open that folder instead.
+   This copy on your computer is for the rescue tools and for your AI agent to read. Your own live copy is made later, without the terminal (see "Your own private copy" below).
+5. **Open your AI agent in that folder.** Claude Code: type `claude` in the same window, inside the `owncrm` folder. Codex: type `codex` there. Cursor or the Claude Desktop app: open the `owncrm` folder in it. Then go to "Start here" below.
 
-Windows notes: iMessage rescue needs a Mac. The backup key tool (`age`) and the restore tool (`psql`) aren't built in. Your agent can install them with `winget install FiloSottile.age` and `winget install PostgreSQL.PostgreSQL`. Use `node -e` instead of `openssl` for random secrets (BUILD.md shows how). Paths look like `C:\Users\you\owncrm-rescue` instead of `~/owncrm-rescue`.
+Windows notes: iMessage rescue needs a Mac. The backup key tool (`age`) and the restore tool (`psql`) aren't built in. Your agent can install them with `winget install FiloSottile.age` and `winget install PostgreSQL.PostgreSQL`. Use `node -e` instead of `openssl` for random secrets (BUILD.md shows how). Paths look like `C:\Users\you\owncrm-rescue` instead of `~/owncrm-rescue`. Always type the full path: PowerShell does not turn `~` into your home folder for these tools, and the rescue tools stop if they see a `~` that wasn't turned into a real folder.
+
+## Your own private copy (no terminal needed)
+
+Your live CRM runs from your own **private** copy of this code on GitHub. There are two ways to make it. Both need a GitHub account. BUILD.md Prompt 4 walks you through it, after the database exists, because the deploy asks for the database's keys.
+
+**Easiest: the Deploy button.** It makes a private copy on your GitHub, connects it to Vercel and asks for each setting on one screen:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fdylanjlennon%2Fowncrm&project-name=owncrm&repository-name=owncrm&env=SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,LINK_SIGNING_SECRET,CRON_SECRET,BACKUP_REPORT_SECRET,LEAD_FORM_KEY&envDescription=Your%20Supabase%20project%20URL%20and%20keys%2C%20plus%20four%20long%20random%20values%20from%20your%20password%20manager.%20BUILD.md%20Prompt%204%20says%20where%20each%20one%20comes%20from.%20Never%20paste%20them%20into%20a%20chat.&envLink=https%3A%2F%2Fgithub.com%2Fdylanjlennon%2Fowncrm%2Fblob%2Fmain%2Fprompts%2FBUILD.md%23prompt-4-deploy-this-gives-the-app-its-address)
+
+**Or: "Use this template".** On https://github.com/dylanjlennon/owncrm press "Use this template", then "Create a new repository", choose **Private**, and create it. Then in Vercel: Add New, Project, pick that repository, and add the settings yourself.
+
+Either way, open your new repository on GitHub afterwards and check it says **Private** next to its name. If it says Public, go to its Settings, scroll to "Danger Zone", "Change repository visibility", and make it Private.
+
+Comfortable with git? You can also push your clone to a new private repository yourself. BUILD.md has that as the advanced path.
 
 ## Start here
 

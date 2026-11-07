@@ -145,6 +145,7 @@ form.snooze select { width: auto; }
 .u-mt0 { margin-top: 0; }
 .u-mt8 { margin-top: 8px; }
 .u-mt10 { margin-top: 10px; }
+.u-prewrap { white-space: pre-wrap; }
 .u-mt12 { margin-top: 12px; }
 .u-m0 { margin: 0; }
 .u-m0pl18 { margin: 0; padding-left: 18px; }

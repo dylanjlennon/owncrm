@@ -1,6 +1,6 @@
 # Set up with your AI agent
 
-You don't need to code. You need about two evenings, a credit card for the services, and your phone for two-step sign-in. First do "Step 0" in README.md: install Node.js 22.13 or newer and git, get the download, and run `npm install`. Then open your AI agent (Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI or another) in this folder, then paste these prompts one after another. Each one finishes before you paste the next.
+You don't need to code. You need about two evenings, a credit card for the services, and your phone for two-step sign-in. First do "Step 0" in README.md: install an AI agent that can run commands on your computer (Claude Code or Codex; a chat in your web browser can't do this), install Node.js 22.13 or newer and git, get the download, and run `npm install`. Then open your AI agent (Claude Code, Claude Desktop, Codex, Cursor, Gemini CLI or another) in this folder, then paste these prompts one after another. Each one finishes before you paste the next.
 
 Your agent uses your own account. Nothing here asks for your AI login, and you should never give it to any app.
 

@@ -18,6 +18,11 @@ Paste these into your own AI agent (Claude Code, Codex, Cursor, Gemini CLI or si
 
 ---
 
+**Windows:** in every command below, use the full path of a folder in your user folder, like
+`C:\Users\<you>\owncrm-rescue`, instead of `~/owncrm-rescue`. PowerShell does not turn `~` into your home folder for
+these tools. The tools stop with a plain message if they see a `~` that wasn't turned into a real folder, or a work
+folder inside the owncrm folder (it could end up on GitHub).
+
 ### Prompt 1: set up the work folder
 
 ```
@@ -39,11 +44,18 @@ Help me export my history into files on this computer. For each source I choose,
   headers and snippets to the AI company BEFORE any local cleaning: use a Gmail connector to list my sent and received
   messages since my cutoff, and save ONLY id, date, from, to, cc, subject and a snippet as JSON lines to
   ~/owncrm-rescue/gmail-connector.jsonl. Don't save full bodies.
-- Outlook: an mbox export first. A connector only with the same warning and my yes.
+- Outlook: Outlook's own export files (.pst on Windows, .olm on Mac) can't be read by these tools. Walk me through
+  adding my Outlook account to Thunderbird (free) and saving my Inbox and Sent folders as mbox files with its
+  ImportExportTools NG add-on. If my Outlook mail also lands in Gmail, use the Gmail Takeout instead.
+  A connector only with the same warning as Gmail and my yes.
+- Android texts: walk me through installing "SMS Backup & Restore" on my phone, backing up messages to a file,
+  and copying the .xml file to this computer.
 - iMessage (Mac only): walk me through System Settings, Privacy and Security, Full Disk Access for my terminal app.
   Explain that only messages on this Mac show up, that turning on Messages in iCloud brings older texts down,
   and that deleted messages won't appear. Never open ~/Library/Messages/chat.db directly; the tool reads a copy.
 - Google Voice: walk me through Google Takeout, Voice only, and unzipping it.
+- Tell me that Google Takeout emails me a download link when it is ready. That can take hours, sometimes a day
+  or two. We continue when it arrives.
 - Phone contacts: export a .vcf from my phone or Mac Contacts.
 - Old CRM, closed deals, website signups: export CSV files.
 I am on Windows / Mac (ask me). If I'm on Windows, tell me iMessage is not possible, and use paths like
@@ -59,6 +71,8 @@ node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source gmail_mbox --
 node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source imessage --input ~/Library/Messages/chat.db
 node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source google_voice --input <Takeout>/Voice/Calls
 node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source phone_contacts --input <file.vcf>
+node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source android_sms --input <sms-backup file.xml>
+node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source outlook_mbox --input <Outlook mbox from Thunderbird>
 node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source crm_export --input <file.csv>
 node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source deal_records --input <file.csv>
 node rescue/bin/rescue.mjs extract --work ~/owncrm-rescue --source website_lists --input <file.csv>
@@ -85,12 +99,24 @@ Rules: never mention race, religion, health, family situation, age, disability, 
 Leave out anyone who looks personal (family, friends, doctors, lawyers). Never copy account numbers or passwords.
 When every batch has a judgments file, run: node rescue/bin/rescue.mjs review --work ~/owncrm-rescue
 (If review.csv already exists from an earlier try, add --overwrite only after I say so: my decisions are in it.)
+If review says some judgments were refused, read me each line: it names the person, the field and the word
+it refused, and why. Rewrite only that summary in its judgments file without that word, and ask me before you run
+review again with --overwrite. Town names like Black Mountain, Old Fort and White Oak are fine.
 ```
 
 ### Prompt 5: you review
 
 ```
-Open ~/owncrm-rescue/review.csv for me in my spreadsheet app. Explain the columns.
+Open ~/owncrm-rescue/review.csv for me in my spreadsheet app. Read me its first row ("READ ME FIRST"): it explains
+the sheet. Then explain the columns, especially:
+- decision: I type yes to keep a person. Blank means left out.
+- in_scope and scope_reason: no means the tools left them out (block list, automated sender, personal topic).
+  They stay out unless I type yes. I never type yes on family, friends, doctors or lawyers.
+- what_to_do: what this row needs from me.
+- "Approve by hand" means the tools couldn't tell. If they are a client, I type yes; they come in with no summary.
+- People on my block list are never kept, even with a yes. To keep one, I take them off blocklist.txt first.
+- merge_with puts two people in one household (a couple): I type yes on both, then paste the main person's
+  candidate_id into the other person's merge_with cell.
 I will type yes in the decision column for each person to keep, and read every summary: anything private
 (health, money, family, why they are really moving) gets deleted from the summary or the person gets no yes.
 The automatic checks miss things; this read is the real check. Wait until I say I'm done.
@@ -103,7 +129,8 @@ If I use Excel: tell me to save as "CSV UTF-8" and to check that phone numbers k
 Run: node rescue/bin/rescue.mjs build --work ~/owncrm-rescue
 Then: npm run contract:check ~/owncrm-rescue/contract
 If it is not valid, open contract-errors.csv, explain each problem in plain words, and help me fix the review sheet. Then build again.
-When it is valid, tell me how many households, people and emails or phones are in it. Don't upload anything.
+When it is valid, tell me how many households, people and emails or phones are in it, and read me any line about
+people left out because they are on my block list. Don't upload anything.
 ```
 
 You now own a clean, checked list of your relationships. Stop here if you want. When you're ready, go to `prompts/BUILD.md`.

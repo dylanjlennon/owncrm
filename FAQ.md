@@ -2,6 +2,10 @@
 
 **Is this free?** The software is free and open source (AGPL-3.0). Running it is not. A safe setup costs about $45 to $65 a month for the host, the database with backups, email and a domain, plus an AI plan (about $20 a month) if you don't already pay for one. Free plans aren't safe for a business: Vercel's free plan is non-commercial, and Supabase's free plan has no backups and pauses.
 
+**Can I set this up with ChatGPT or Claude in my web browser?** No. A chat in a browser can't open files or run programs on your computer. You need an AI agent that runs on your computer, like Claude Code or Codex. README.md, Step 0, has the install line for Mac and Windows.
+
+**Do I need to use git?** No. The Deploy button in README.md makes your own private copy on GitHub and puts it live, with no terminal. You still type a few commands in Step 0 to install the tools and download the code your AI agent reads.
+
 **Is it a Follow Up Boss replacement?** No. It has no texting, calling, Zillow sync, team features or support line. You get ownership: the data, the code and the backups are yours.
 
 **Who looks after it?** You. You are the IT department. The Status page, the red bar, the watchdog email and the daily all-clear tell you when something needs you.
@@ -39,6 +43,12 @@
 **What happens if spam floods my web form?** Nothing is lost. One visitor address can send 10 posts in 10 minutes; more are turned away without blocking anyone else. Each address gets one-by-one "New lead" emails for 3 leads a day; after that its leads come in a "Many new leads" list, about once an hour. A real lead from any other address still gets its own email, its reminders and the email to your backup contact. If more than 60 posts arrive in an hour you also get one "Your web form is being flooded" email. If a flood comes from many addresses at once and uses up the day's lead emails, the rest go in the list too, so read it.
 
 **Why did the importer refuse a row about a house?** The health and legal word list is careful, but it lets ordinary real estate wording through: street names ("Prison Camp Rd", "Hospital Dr"), buildings ("old jail renovated into lofts", "close to Mission Hospital"), "no pending litigation" in an HOA disclosure, "foreclosure listing", "full rehab", "a stroke of luck". The same words about a person are still refused, and so is wording that is as often about a person: "needs rehab", "rehab costs" with no house word near it, "foreclosure sale", "without bankruptcy", "former prison inmate", "the old county jail" (with no building word after it), and a street word followed by a name ("Center Dr Patel"). Rewrite those cells ("needs a full rehab", "kitchen rehab costs") or leave them out. A zip code next to a year ("28801 2019") is no longer read as a Social Security number. Very long cells (over 10,000 characters) are refused as "too long to check".
+
+**The rescue refused some of my AI's summaries. Why?** Review lists each one with the word it refused and the rule: a word about who someone is (race, religion, age, family), a health or legal word, something shaped like an account or ID number, or text that reads like an instruction. Have your agent rewrite that summary without the word and run review again. Place names like Black Mountain, Old Fort and White Oak are allowed.
+
+**I typed yes on someone on my block list. Why aren't they in the folder?** The block list always wins, so family, friends, doctors and lawyers can't slip in by a slip of the keyboard. Build tells you who it left out. To keep someone, take them off blocklist.txt and run aggregate, review and build again.
+
+**Where are my rescue summaries after the import?** At the top of each contact's page, under "From your rescue". They are saved as that contact's Notes.
 
 **Does the CRM keep the spreadsheets I import?** No. It keeps only the rows that passed the checks, and only until you finish the import (or a day). Refused rows are never saved, not even in the error file, which lists line numbers and reasons only.
 

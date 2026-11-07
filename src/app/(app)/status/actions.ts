@@ -11,6 +11,7 @@ import { getSettings } from '@/lib/settings';
 import { sendAlert } from '@/lib/alerts';
 import { emailAdapter } from '@/lib/email';
 import { finishGoLive } from '@/lib/golive';
+import { testAlertMissing } from '@/lib/health';
 
 const done = (code: string): never => { revalidatePath('/', 'layout'); redirect(`/status?msg=${code}`); };
 
@@ -38,6 +39,8 @@ export async function domainCheckNow() {
 export async function sendTestAlert() {
   const { db } = await requireOwner();
   const s = await getSettings(db);
+  const missing = testAlertMissing(s);
+  if (missing) done(missing);
   const r = await sendAlert(db, emailAdapter(), s, env.appUrl(), { subject: 'Test alert from your CRM', text: `If you can read this, alerts reach you. Go back to Status and press "I got the test alert".\n${env.appUrl()}/status`, alsoBackup: true });
   done(r.ok ? 'test_alert_sent' : 'test_alert_failed');
 }

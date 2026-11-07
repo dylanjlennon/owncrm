@@ -56,13 +56,23 @@ export function evaluateHealth(input: {
 
 export const failingChecks = (checks: Check[]) => checks.filter((c) => c.state === 'fail');
 
+/** Why a test alert can't be sent yet, as a message code, or null when Settings has what it needs. */
+export function testAlertMissing(s: { owner_email?: string | null; sender_email?: string | null }): 'test_alert_no_owner' | 'test_alert_no_sender' | null {
+  if (!s.owner_email) return 'test_alert_no_owner';
+  if (!s.sender_email) return 'test_alert_no_sender';
+  return null;
+}
+
+/** The words in the bar at the top of every page when nothing is red. */
+export const calmStrip = (goLiveDone: boolean) => (goLiveDone ? 'All checks passing.' : 'Setup not finished. Nothing is red, but go-live is not done yet.');
+
 export type GoLiveFacts = {
   firstRunAck: boolean; ownerEmail: boolean; domain: boolean; selfTest: boolean; signupOff: boolean;
   testLead: boolean; testAlert: boolean; testBackup: boolean; watchdog: boolean; backupWatchdog: boolean; allClear: boolean;
 };
 export const GOLIVE_ITEMS: { key: keyof GoLiveFacts; label: string }[] = [
   { key: 'firstRunAck', label: 'You read the costs and who should not use this' },
-  { key: 'ownerEmail', label: 'Your alert email is set in Settings' },
+  { key: 'ownerEmail', label: 'Your alert email and "Send from" address are both set in Settings' },
   { key: 'domain', label: 'Sending domain is verified' },
   { key: 'selfTest', label: 'Logged-out read test passes' },
   { key: 'signupOff', label: 'Public signup is off (checked again when you press Finish)' },

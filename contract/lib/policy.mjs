@@ -35,22 +35,43 @@ export const PROTECTED = [
 const PROTECTED_RE = new RegExp(`\\b(${PROTECTED.map((w) => w.replace(/ /g, '\\s+')).join('|')})\\b`, 'i');
 
 const PROTECTED_ALL = new RegExp(PROTECTED_RE.source, 'gi');
-// "Old" about a building or its parts, not a person: "old jail renovated into lofts", "old roof".
-const OLD_THING_AFTER = /^\s+(?:(?:county|city|town|mill|stone|brick|textile)\s+)?(?:jail|prison|hospital|house|home|farmhouse|cabin|barn|mill|school(?:house)?|building|warehouse|factory|store|post office|station|roof|floors?|windows?|wiring|plumbing|furnace|hvac|water heater|kitchen|bath(?:room)?s?|carpet|deck|siding|growth|trees?|town|world|fixtures?|foundation|chimney|garage|shed)\b/i;
+// "Old" about a building, a thing or a system, not a person: "old jail renovated into lofts",
+// "old roof", "my old CRM", "their old phone number".
+const OLD_THING_AFTER = /^\s+(?:(?:county|city|town|mill|stone|brick|textile)\s+)?(?:jail|prison|hospital|house|home|farmhouse|cabin|barn|mill|school(?:house)?|building|warehouse|factory|store|post office|station|roof|floors?|windows?|wiring|plumbing|furnace|hvac|water heater|kitchen|bath(?:room)?s?|carpet|deck|siding|growth|trees?|town|world|fixtures?|foundation|chimney|garage|shed|crm|system|database|spreadsheet|software|app|phone(?: number)?|cell(?: number)?|numbers?|e-?mail(?: address)?|address|brokerage|firm|office|account|listing|contract|lease|neighbou?rhood|place|apartment|condo|rental|website|site|inbox|records?|files?|notes?)\b/i;
+// Part of a place name. Western North Carolina has towns and roads named "Black Mountain", "Old
+// Fort" and "White Oak". A capitalized protected word counts as part of a place name when a
+// capitalized place word follows it ("Black Mountain", "Old Fort", "White Oak", "Old Town",
+// "White Pine"). The lower-case town names are allowed too, because nobody means a person by them.
+const PLACE_AFTER = /^\s+(?:Mountains?|Mtn|Fort|Oaks?|Creek|Lake|Rock|Pines?|Town|Hills?|River|Springs?|Mill|Salem|Ridge|Valley|Cove|Gap|Branch|Knob|Bluff|Harbou?r|Point|Plains|Sulphur|Fork|Forge|Hickory|Swamp|Water|Sands?|Beach|Bridge|Pond|Grove|Meadows?|Park)\b/;
+const KNOWN_PLACES = /^(?:black mountains?|old fort|white oak)\b/i;
+
+/**
+ * The first word about who someone is (race, religion, age and the like), or null.
+ * "too long to check" when the text is longer than any check reads.
+ * @param {string | null | undefined} text
+ * @returns {string | null}
+ */
+export function protectedTraitMatch(text) {
+  if (!text) return null;
+  if (tooLong(text)) return 'too long to check';
+  const t = plain(text);
+  for (const m of t.matchAll(PROTECTED_ALL)) {
+    const at = /** @type {number} */ (m.index);
+    const after = t.slice(at + m[0].length, at + m[0].length + 60);
+    // Part of a street name ("Old Prison Camp Rd", "White Oak Dr").
+    if (/^[A-Z]/.test(m[0]) && STREET_AFTER.test(after)) continue;
+    // Part of a place name ("Black Mountain", "Old Fort", "White Oak").
+    if (/^[A-Z]/.test(m[0]) && PLACE_AFTER.test(after)) continue;
+    if (KNOWN_PLACES.test(t.slice(at, at + 40))) continue;
+    if (/^old$/i.test(m[0]) && OLD_THING_AFTER.test(after)) continue;
+    return m[0];
+  }
+  return null;
+}
 
 /** @param {string | null | undefined} text */
 export function mentionsProtectedTrait(text) {
-  if (!text) return false;
-  if (tooLong(text)) return true;
-  const t = plain(text);
-  for (const m of t.matchAll(PROTECTED_ALL)) {
-    const after = t.slice(/** @type {number} */ (m.index) + m[0].length, /** @type {number} */ (m.index) + m[0].length + 60);
-    // Part of a street name ("Old Prison Camp Rd", "White Oak Dr").
-    if (/^[A-Z]/.test(m[0]) && STREET_AFTER.test(after)) continue;
-    if (/^old$/i.test(m[0]) && OLD_THING_AFTER.test(after)) continue;
-    return true;
-  }
-  return false;
+  return protectedTraitMatch(text) !== null;
 }
 
 // Topics that are never summarized and keep a thread out of scope.
@@ -64,7 +85,14 @@ export const REAL_ESTATE_SIGNAL = /\b(house|home|listing|showing|offer|closing|e
 /** @param {string} text */
 export function classifyTopic(text) {
   const parts = pieces(String(text));
-  for (const [name, re] of Object.entries(SENSITIVE_TOPICS)) if (parts.some((p) => re.test(p))) return name;
+  for (const [name, re] of Object.entries(SENSITIVE_TOPICS)) {
+    // A hospital or clinic named as a place ("close to Mission Hospital", "45 Hospital Dr") is
+    // not a medical topic. The same words about a person still are.
+    const hit = name === 'medical'
+      ? (/** @type {string} */ p) => [...p.matchAll(new RegExp(re.source, 'gi'))].some((m) => !(BUILDING.test(m[0]) && allowedUse(p, /** @type {number} */ (m.index), m[0])))
+      : (/** @type {string} */ p) => re.test(p);
+    if (parts.some(hit)) return name;
+  }
   return parts.some((p) => REAL_ESTATE_SIGNAL.test(p)) ? 'real_estate' : 'unrelated';
 }
 
@@ -100,7 +128,7 @@ const STREET_AFTER = /^(?:\s+[A-Z][a-z]+){0,2}\s+(?:Rd|Road|St|Street|Ave|Avenue
 const BUILDING = /^(?:jails?|prisons?|hospitals?|clinics?|hospices?)$/i;
 const BUILDING_BEFORE = [
   /\b(?:historic|converted|renovated|abandoned)\s+(?:[\w'-]+\s+)?$/i,
-  /(?:^|\b)(?:[Nn]ear(?:by)?|[Cc]lose to|[Nn]ext to|[Aa]cross from|[Mm]inutes (?:to|from)|[Ww]alk(?:ing)? (?:distance )?to|[Dd]rive to)\s+(?:the\s+)?(?:[A-Z][\w.'-]*\s+){0,3}$/,
+  /(?:^|\b)(?:[Nn]ear(?:by)?|[Cc]lose to|[Nn]ext to|[Aa]cross from|[Bb]ehind|[Bb]eside|[Pp]ast|[Uu]p the (?:road|street) from|[Dd]own the (?:road|street) from|[Mm]inutes (?:to|from)|[Ww]alk(?:ing)? (?:distance )?to|[Dd]rive to)\s+(?:the\s+)?(?:[A-Z][\w.'-]*\s+){0,3}$/,
 ];
 // "Old" or "former" before the word, and a building word after it.
 const OLD_BEFORE = /\b(?:old|former)\s+(?:[\w'-]+\s+)?$/i;
@@ -139,13 +167,23 @@ function allowedUse(/** @type {string} */ t, /** @type {number} */ i, /** @type 
 }
 const HEALTH_LEGAL_ALL = new RegExp(HEALTH_LEGAL_RE.source, 'gi');
 
+/**
+ * The first health or legal word that is not an allowed real estate use, or null.
+ * "too long to check" when the text is longer than any check reads.
+ * @param {string | null | undefined} text
+ * @returns {string | null}
+ */
+export function healthOrLegalMatch(text) {
+  if (!text) return null;
+  if (tooLong(text)) return 'too long to check';
+  const t = plain(text);
+  for (const m of t.matchAll(HEALTH_LEGAL_ALL)) if (!allowedUse(t, /** @type {number} */ (m.index), m[0])) return m[0];
+  return null;
+}
+
 /** @param {string | null | undefined} text */
 export function mentionsHealthOrLegal(text) {
-  if (!text) return false;
-  if (tooLong(text)) return true;
-  const t = plain(text);
-  for (const m of t.matchAll(HEALTH_LEGAL_ALL)) if (!allowedUse(t, /** @type {number} */ (m.index), m[0])) return true;
-  return false;
+  return healthOrLegalMatch(text) !== null;
 }
 
 // Text copied from an email that tries to give orders. Refused in summaries.
@@ -167,8 +205,20 @@ const INSTRUCTION_PATTERNS = [
   String.raw`[A-Za-z0-9+/]{40,}={0,2}`,
 ];
 const INSTRUCTION_RE = new RegExp(INSTRUCTION_PATTERNS.join('|'), 'im');
+/**
+ * The first words that read like an order, cut to 40 characters, or null.
+ * @param {string | null | undefined} text
+ * @returns {string | null}
+ */
+export function instructionMatch(text) {
+  if (!text) return null;
+  for (const p of pieces(String(text))) {
+    const m = normalizeText(p).match(INSTRUCTION_RE);
+    if (m) return m[0].trim().slice(0, 40);
+  }
+  return null;
+}
 /** @param {string | null | undefined} text */
 export function looksLikeInstructions(text) {
-  if (!text) return false;
-  return pieces(String(text)).some((p) => INSTRUCTION_RE.test(normalizeText(p)));
+  return instructionMatch(text) !== null;
 }
