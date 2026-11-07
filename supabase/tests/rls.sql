@@ -123,6 +123,13 @@ begin
       jsonb_build_object('name','alerts can still use the reserve','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'') returning 1','expect','positive'),
       -- M2: alerts have a hard daily ceiling (reserved_alert_budget = 2, and two alerts went today).
       jsonb_build_object('name','alerts stop at the daily alert ceiling','as','service','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''owner@example.com'',''s'',''b'',''alert'')','expect','raises:blocked_alert_budget'),
+      -- N6: alerts no longer count against client email (cap 4, reserve 2: two client emails a day).
+      jsonb_build_object('name','alerts do not eat client email','as','owner','sql','update public.app_settings set daily_email_cap = 4 returning 1','expect','positive'),
+      jsonb_build_object('name','second client email fits after two alerts','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'') returning 1','expect','positive'),
+      jsonb_build_object('name','client email stops at cap minus the alert reserve','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'')','expect','raises:blocked_budget'),
+      jsonb_build_object('name','daily cap must be above the alert reserve','as','owner','sql','update public.app_settings set daily_email_cap = 2 returning 1','expect','raises'),
+      -- N12: the alert ceiling is checked under a lock.
+      jsonb_build_object('name','alert ceiling is serialized','as','service','sql','select (pg_get_functiondef(''private.outbound_guard''::regproc) like ''%pg_advisory_xact_lock%'')::text','expect','value:true'),
       -- Revocation must be proven on the same run.
       jsonb_build_object('name','end all sessions','as','service','sql','select public.revoke_all_owner_sessions() is not null','expect','value:true')
     );

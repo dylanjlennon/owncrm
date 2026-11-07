@@ -11,3 +11,9 @@ export function importSizeProblem(totalBytes: number): string | null {
 // leads are held for the "Many new leads" list (still saved), and 600 an hour before posts are
 // refused outright to protect the database.
 export const LEAD_LIMITS = { perIp: 10, perHour: 60, hardPerHour: 600 };
+
+// Alerts have their own daily ceiling (reserved_alert_budget). Client email may use the daily and
+// monthly caps minus that number, so both caps must be higher than it. The database checks too.
+export function capsProblem(c: { daily_email_cap: number; monthly_email_cap: number; reserved_alert_budget: number }): boolean {
+  return c.daily_email_cap <= c.reserved_alert_budget || c.monthly_email_cap <= c.reserved_alert_budget;
+}
