@@ -20,7 +20,9 @@ describe('L2: no AI key setting', () => {
       .filter((p) => !p.endsWith('no-ai-key.test.ts') && !/supabase\/migrations\/2026110600/.test(p))
       .filter((p) => /ai_api_key|app_secrets|APP_ENCRYPTION_KEY|encryptSecret|decryptSecret|Optional AI key/.test(readFileSync(p, 'utf8')))
       .map((p) => relative(root, p));
-    expect(hits).toEqual(['supabase/migrations/20261107000100_review_fixes.sql']);
+    // The migration that drops the table, and the restore files that name it only to skip it
+    // when an older backup still holds it (round 2, N5).
+    expect(hits).toEqual(['RESTORE.md', 'scripts/restore-filter.mjs', 'supabase/migrations/20261107000100_review_fixes.sql', 'tests/restore-filter.test.ts']);
   });
   it('the encryption helpers are gone', () => {
     expect('encryptSecret' in secure).toBe(false);
