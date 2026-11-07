@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run, loadEnvFile } from '../rescue/bin/rescue.mjs';
 
-const TOKEN = 'och_fake_token_for_tests_0123456789';
+const TOKEN = 'och_fake_token_for_tests';
 
 describe('L1: scheduled rescue keeps the token in a private file', () => {
   it('the printed schedule has no token, and the token is in a 0600 file', async () => {
