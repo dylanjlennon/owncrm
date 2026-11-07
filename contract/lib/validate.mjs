@@ -62,6 +62,14 @@ export function validateContract(input) {
       const extra = Object.keys(manifest).filter((k) => !(k in SCHEMAS.manifest.properties));
       if (extra.length) push('manifest.json', '', extra.map(label).join(' '), 'Unknown fields');
       checkRow(SCHEMAS.manifest, manifest, (c, p) => push('manifest.json', '', c, p));
+      // Free text in the manifest (notes, created_by) is stored with the batch, so it gets the
+      // same checks as every CSV column.
+      for (const [k, v] of Object.entries(manifest)) {
+        if (typeof v !== 'string') continue;
+        if (containsSensitive(v)) push('manifest.json', '', label(k), 'Looks like a Social Security, card, account, routing, license number, password or wire details. Remove it.');
+        if (mentionsHealthOrLegal(v)) push('manifest.json', '', label(k), 'Mentions health or a legal matter. Remove it.');
+        if (looksLikeInstructions(v)) push('manifest.json', '', label(k), 'Reads like instructions copied from a message. Remove it.');
+      }
       if (typeof manifest.contract_version === 'string' && manifest.contract_version.split('.')[0] !== CONTRACT_VERSION.split('.')[0]) {
         push('manifest.json', '', 'contract_version', `This app reads contract version ${CONTRACT_VERSION.split('.')[0]}.x`);
       }

@@ -107,7 +107,9 @@ export function splitRows(rows: string[][], mapping: Mapping, lines?: number[]) 
 }
 
 // Good rows as contract files, so the same checker and importer handle them.
-export function rowsToContractFiles(good: Record<string, string>[], filename: string) {
+// The file name is not copied into the manifest: it is stored on the import row, and a name
+// that happens to look like a long code would trip the instruction check.
+export function rowsToContractFiles(good: Record<string, string>[]) {
   const households: Record<string, unknown>[] = []; const people: Record<string, unknown>[] = []; const methods: Record<string, unknown>[] = [];
   good.forEach((r, i) => {
     const h = `csv-${i + 1}`;
@@ -117,7 +119,7 @@ export function rowsToContractFiles(good: Record<string, string>[], filename: st
     if (r.phone) methods.push({ household_id: h, person_id: `${h}-p`, kind: 'phone', value: r.phone });
   });
   return {
-    manifest: JSON.stringify({ contract_version: CONTRACT_VERSION, created_at: new Date().toISOString(), created_by: 'csv import', notes: filename.slice(0, 200) }),
+    manifest: JSON.stringify({ contract_version: CONTRACT_VERSION, created_at: new Date().toISOString(), created_by: 'csv import', notes: 'Spreadsheet import' }),
     files: {
       households: toCsv(['household_id','display_name','stage','lead_source','source_type','summary'], households),
       people: toCsv(['person_id','household_id','first_name','last_name'], people),

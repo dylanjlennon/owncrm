@@ -76,7 +76,7 @@ export async function commitImport(f: FormData) {
     if (!draft) redirect(`/import/${id}?msg=import_expired`);
     const mapping = readMapping(f);
     const { good, bad } = splitRows(draft!.rows, mapping, draft!.lines);
-    const c = rowsToContractFiles(good, imp.filename || 'file');
+    const c = rowsToContractFiles(good);
     const v = validateContract({ manifest: c.manifest, files: c.files });
     if (!v.ok) redirect(`/import/${id}?msg=bad_input`);
     payload = v.data;
