@@ -120,3 +120,41 @@ alter table public.app_settings add constraint app_settings_caps_above_alert_res
 -- that passed the checks (cleared after import or after a day) and an error file of line numbers
 -- and reasons.
 update public.imports set raw_csv = null, error_csv = null where raw_csv is not null or error_csv is not null;
+
+-- ---------------------------------------------------------------- N9: birthdays are month and day only
+-- The app stores a birthday as year 2000, so no age is ever kept. Now the database insists on it.
+-- Any birthday saved with a real year (only possible through SQL or the API) loses the year.
+update public.people
+   set birthday = make_date(2000, extract(month from birthday)::int, extract(day from birthday)::int)
+ where birthday is not null and extract(year from birthday) <> 2000;
+alter table public.people drop constraint if exists people_birthday_month_day_only;
+alter table public.people add constraint people_birthday_month_day_only
+  check (birthday is null or extract(year from birthday) = 2000);
+
+-- ---------------------------------------------------------------- restoring older backups
+-- A backup taken before these rules may hold a birthday with a year, or email caps that are now
+-- too low. scripts/restore-to-blank.sh calls restore_begin before loading and restore_finish
+-- after, in the same transaction: the data is brought up to today's rules and the checks are
+-- put back before anything is committed. Only the database owner (the restore script) can run them.
+create or replace function private.restore_begin() returns void
+language plpgsql set search_path = '' as $$
+begin
+  alter table public.people drop constraint if exists people_birthday_month_day_only;
+  alter table public.app_settings drop constraint if exists app_settings_caps_above_alert_reserve;
+end $$;
+
+create or replace function private.restore_finish() returns void
+language plpgsql set search_path = '' as $$
+begin
+  update public.people
+     set birthday = make_date(2000, extract(month from birthday)::int, extract(day from birthday)::int)
+   where birthday is not null and extract(year from birthday) <> 2000;
+  update public.app_settings set daily_email_cap = reserved_alert_budget + 1 where daily_email_cap <= reserved_alert_budget;
+  update public.app_settings set monthly_email_cap = reserved_alert_budget + 1 where monthly_email_cap <= reserved_alert_budget;
+  alter table public.people add constraint people_birthday_month_day_only
+    check (birthday is null or extract(year from birthday) = 2000);
+  alter table public.app_settings add constraint app_settings_caps_above_alert_reserve
+    check (daily_email_cap > reserved_alert_budget and monthly_email_cap > reserved_alert_budget);
+end $$;
+revoke all on function private.restore_begin() from public, anon, authenticated, service_role;
+revoke all on function private.restore_finish() from public, anon, authenticated, service_role;

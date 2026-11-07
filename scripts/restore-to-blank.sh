@@ -25,7 +25,11 @@ node scripts/restore-filter.mjs "$TMP/backup.sql" "$EXISTING" "$TMP/filtered.sql
   echo "begin;"
   echo "set local session_replication_role = replica;"
   echo "delete from public.app_settings where id;"
+  # Lets an older backup in (a birthday with a year, caps now too low), then brings it up to
+  # today's rules and puts the checks back, before the commit. See migration 20261107000200.
+  echo "do \$\$ begin if to_regprocedure('private.restore_begin()') is not null then perform private.restore_begin(); end if; end \$\$;"
   cat "$TMP/filtered.sql"
+  echo "do \$\$ begin if to_regprocedure('private.restore_finish()') is not null then perform private.restore_finish(); end if; end \$\$;"
   echo "commit;"
 } | grep -v '^SET transaction_timeout' | psql "$TARGET_DB_URL" -v ON_ERROR_STOP=1 -q >/dev/null
 node -e '

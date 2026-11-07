@@ -128,6 +128,10 @@ begin
       jsonb_build_object('name','second client email fits after two alerts','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'') returning 1','expect','positive'),
       jsonb_build_object('name','client email stops at cap minus the alert reserve','as','owner','sql','insert into public.outbound_emails (to_address,subject,body_text,kind) values (''open-rls@example.com'',''s'',''b'',''one_to_one'')','expect','raises:blocked_budget'),
       jsonb_build_object('name','daily cap must be above the alert reserve','as','owner','sql','update public.app_settings set daily_email_cap = 2 returning 1','expect','raises'),
+      -- N9: birthdays are month and day only, in the database too.
+      jsonb_build_object('name','a birthday with a year is refused','as','owner','sql',format('insert into public.people (household_id, first_name, birthday) values (%L, ''Testy'', ''1961-04-02'') returning 1',v_hh),'expect','raises'),
+      jsonb_build_object('name','a month-and-day birthday is accepted','as','owner','sql',format('insert into public.people (household_id, first_name, birthday) values (%L, ''Testy'', ''2000-04-02'') returning 1',v_hh),'expect','positive'),
+      jsonb_build_object('name','restore helpers are not callable by the app','as','owner','sql','select private.restore_begin()','expect','raises'),
       -- N12: the alert ceiling is checked under a lock.
       jsonb_build_object('name','alert ceiling is serialized','as','service','sql','select (pg_get_functiondef(''private.outbound_guard''::regproc) like ''%pg_advisory_xact_lock%'')::text','expect','value:true'),
       -- Revocation must be proven on the same run.

@@ -26,7 +26,9 @@ lpsql -d postgres -c 'create database oldsrc' -c 'create database dst_old' >/dev
 lpsql -d oldsrc -f supabase/tests/auth-shim.sql >/dev/null
 for f in supabase/migrations/*.sql; do case "$(basename "$f")" in 20261107*) continue;; esac; lpsql -d oldsrc -f "$f" >/dev/null; done
 lpsql -d oldsrc -c "insert into public.households (display_name) values ('Testy McExample'), ('Sample Example')" \
-  -c "insert into public.app_secrets (name, ciphertext) values ('ai_api_key', 'fake-ciphertext-for-test')" >/dev/null
+  -c "insert into public.app_secrets (name, ciphertext) values ('ai_api_key', 'fake-ciphertext-for-test')" \
+  -c "insert into public.people (household_id, first_name, birthday) select id, 'Testy', '1961-04-02' from public.households where display_name = 'Testy McExample'" \
+  -c "update public.app_settings set daily_email_cap = 10 where id" >/dev/null
 SUPABASE_DB_URL="$URL/oldsrc" BACKUP_AGE_RECIPIENT="$RECIP" BACKUP_DIR="$WORK/old" node scripts/backup.mjs >/dev/null
 grep -q '"app_secrets"' "$WORK/old/manifest-latest.json" || { echo "FAIL: the old backup should list app_secrets"; exit 1; }
 lpsql -d dst_old -f supabase/tests/auth-shim.sql >/dev/null
@@ -34,6 +36,8 @@ TARGET_DB_URL="$URL/dst_old" AGE_IDENTITY_FILE="$WORK/key.txt" bash scripts/rest
   || { cat "$WORK/old.log"; echo "FAIL: a backup from before the upgrade did not restore"; exit 1; }
 [ "$(lpsql -d dst_old -Atc 'select count(*) from public.households')" = "2" ] || { echo "FAIL: old backup restored the wrong number of contacts"; exit 1; }
 grep -q 'skipped  app_secrets' "$WORK/old.log" || { echo "FAIL: the skipped table was not reported"; exit 1; }
+[ "$(lpsql -d dst_old -Atc "select birthday from public.people where first_name = 'Testy'")" = "2000-04-02" ] || { echo "FAIL: an old birthday kept its year"; exit 1; }
+[ "$(lpsql -d dst_old -Atc "select count(*) from pg_constraint where conname in ('people_birthday_month_day_only','app_settings_caps_above_alert_reserve')")" = "2" ] || { echo "FAIL: restore did not put the checks back"; exit 1; }
 echo "A backup from before the upgrade restores onto the new schema: ok"
 rm -rf "$WORK"
 echo "RESTORE TEST: passed"
