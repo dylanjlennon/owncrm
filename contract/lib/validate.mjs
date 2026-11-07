@@ -14,6 +14,10 @@ export const MAX_HOUSEHOLDS = 20000;
 
 /** @typedef {{ file: string, line: number | string, column: string, problem: string }} ContractError */
 
+// Error files are stored, so they must never repeat a refused value. Column and field names come
+// from the file too; one that holds a number or health text is shown as "(hidden)".
+const label = (/** @type {string} */ s) => (containsSensitive(s) || mentionsHealthOrLegal(s) ? '(hidden)' : String(s).slice(0, 60));
+
 /**
  * @param {any} schema @param {Record<string, any>} row @param {(col: string, problem: string) => void} err
  */
@@ -26,7 +30,7 @@ function checkRow(schema, row, err) {
     if (types.includes('array')) {
       if (!Array.isArray(v)) { err(col, 'Must be a list'); continue; }
       if (rule.maxItems && v.length > rule.maxItems) err(col, `At most ${rule.maxItems} items`);
-      for (const item of v) if (rule.items?.enum && !rule.items.enum.includes(item)) err(col, `Unknown value "${String(item).slice(0, 40)}"`);
+      for (const item of v) if (rule.items?.enum && !rule.items.enum.includes(item)) err(col, 'Unknown value in this list');
       continue;
     }
     if (typeof v !== 'string') { err(col, 'Must be text'); continue; }
@@ -47,7 +51,7 @@ export function validateContract(input) {
   const push = (/** @type {string} */ file, /** @type {number|string} */ line, /** @type {string} */ column, /** @type {string} */ problem) => {
     if (errors.length < 5000) errors.push({ file, line, column, problem });
   };
-  for (const f of input.extraFiles ?? []) push(f, '', '', 'This file is not part of the contract. Message exports and raw files stay on your computer.');
+  for (const f of input.extraFiles ?? []) push(label(f), '', '', 'This file is not part of the contract. Message exports and raw files stay on your computer.');
 
   /** @type {any} */
   let manifest = null;
@@ -56,7 +60,7 @@ export function validateContract(input) {
     try { manifest = JSON.parse(input.manifest); } catch { push('manifest.json', '', '', 'Not valid JSON'); }
     if (manifest) {
       const extra = Object.keys(manifest).filter((k) => !(k in SCHEMAS.manifest.properties));
-      if (extra.length) push('manifest.json', '', extra.join(' '), 'Unknown fields');
+      if (extra.length) push('manifest.json', '', extra.map(label).join(' '), 'Unknown fields');
       checkRow(SCHEMAS.manifest, manifest, (c, p) => push('manifest.json', '', c, p));
       if (typeof manifest.contract_version === 'string' && manifest.contract_version.split('.')[0] !== CONTRACT_VERSION.split('.')[0]) {
         push('manifest.json', '', 'contract_version', `This app reads contract version ${CONTRACT_VERSION.split('.')[0]}.x`);
@@ -79,7 +83,7 @@ export function validateContract(input) {
     if (!rows.length) { push(file, 1, '', 'No header row'); continue; }
     const header = rows[0].map((h) => h.trim());
     const known = Object.keys(schema.properties);
-    for (const h of header) if (!known.includes(h)) push(file, 1, h, 'Unknown column. Only contract columns are allowed, so message text can\'t ride along.');
+    for (const h of header) if (!known.includes(h)) push(file, 1, label(h), 'Unknown column. Only contract columns are allowed, so message text can\'t ride along.');
     for (const r of schema.required) if (!header.includes(r)) push(file, 1, r, 'Required column is missing');
     rows.slice(1).forEach((cells, i) => {
       const line = i + 2;

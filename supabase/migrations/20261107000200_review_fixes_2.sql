@@ -111,3 +111,12 @@ end $$;
 alter table public.app_settings drop constraint if exists app_settings_caps_above_alert_reserve;
 alter table public.app_settings add constraint app_settings_caps_above_alert_reserve
   check (daily_email_cap > reserved_alert_budget and monthly_email_cap > reserved_alert_budget);
+
+-- ---------------------------------------------------------------- N3: no raw files or refused rows kept
+-- Before this fix, a spreadsheet upload was stored whole (raw_csv), and refused rows were copied
+-- word for word into the error file (error_csv), including the SSN or health text that got them
+-- refused. Both are cleared now. Unfinished uploads have to be uploaded again; finished imports
+-- keep their counts but lose the old error file download. From now on an upload stores only rows
+-- that passed the checks (cleared after import or after a day) and an error file of line numbers
+-- and reasons.
+update public.imports set raw_csv = null, error_csv = null where raw_csv is not null or error_csv is not null;

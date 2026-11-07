@@ -9,6 +9,8 @@ import { USED_LINK_MEMORY_SECONDS } from './tokens';
 import { loadHealth } from './health-load';
 import { failingChecks, type Check } from './health';
 
+export const IMPORT_DRAFT_HOURS = 24;
+
 export type TickDeps = {
   db: SupabaseClient; adapter: EmailAdapter; appUrl: string; linkSecret?: string; now: Date;
   healthcheckUrl?: string; checksHealthcheckUrl?: string; selfTest: () => Promise<{ ok: boolean; detail: string }>;
@@ -189,6 +191,9 @@ export async function runTick(d: TickDeps) {
         return { ok: r.ok, detail: r.ok ? 'Daily all-clear sent.' : 'Could not send the daily all-clear.' };
       });
     }
+    // An import that was uploaded but never finished keeps its checked rows for a day only.
+    await d.db.from('imports').update({ raw_csv: null }).eq('status', 'draft').not('raw_csv', 'is', null)
+      .lt('created_at', new Date(d.now.getTime() - IMPORT_DRAFT_HOURS * 3600000).toISOString());
     await d.db.from('job_runs').delete().lt('started_at', new Date(d.now.getTime() - 90 * 86400000).toISOString());
     // Rate limit rows go after a day. "Link used" rows are kept longer than any short link lives.
     await d.db.from('rate_limits').delete().lt('window_start', new Date(d.now.getTime() - 86400000).toISOString()).not('bucket', 'like', 'once:%');

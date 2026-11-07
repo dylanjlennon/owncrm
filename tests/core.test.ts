@@ -158,13 +158,15 @@ describe('CSV import', () => {
     const { good, bad } = splitRows(rows, m);
     expect(good.length).toBe(480);
     expect(bad.length).toBe(20);
-    expect(errorFile(headers, bad).split('\r\n').length).toBe(22);
+    expect(errorFile(bad).split('\r\n').length).toBe(22);
   });
   it('flags duplicates inside the file and neutralizes the error file', () => {
     const { good, bad } = splitRows([['A','a@example.com'],['B','A@example.com'],['=cmd','']], { first_name: 0, email: 1 });
     expect(good.length).toBe(1);
     expect(bad.length).toBe(2);
-    expect(errorFile(['name','email'], bad)).toContain("'=cmd");
+    // N3: the error file holds line numbers and reasons only, never the refused cells.
+    expect(errorFile(bad)).not.toContain('cmd');
+    expect(errorFile(bad).split('\r\n')[0]).toBe('line,problem');
   });
 });
 
