@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { EmailAdapter } from './email/adapter';
 import { queueAndSend } from './email/send';
-import { signLink } from './tokens';
+import { signLink, LINK_TTL_SECONDS } from './tokens';
 import type { Settings } from './settings';
 
 // How many alert emails may go out, so a broken check or a flood of form posts can't use up
@@ -75,7 +75,7 @@ export async function sendAlert(db: SupabaseClient, adapter: EmailAdapter, setti
 
 export function repliedLink(appUrl: string, secret: string | undefined, leadId: string): string | null {
   if (!secret) return null;
-  return `${appUrl}/r/replied?t=${encodeURIComponent(signLink(secret, 'lead_replied', leadId, 14 * 86400))}`;
+  return `${appUrl}/r/replied?t=${encodeURIComponent(signLink(secret, 'lead_replied', leadId, LINK_TTL_SECONDS.lead_replied))}`;
 }
 
 export function leadAlertText(appUrl: string, secret: string | undefined, lead: { id: string; household_id: string; source: string },

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { EmailAdapter } from './adapter';
-import { signLink } from '../tokens';
+import { signLink, LINK_TTL_SECONDS } from '../tokens';
 import type { MessageCode } from '../messages';
 
 export type SendInput = {
@@ -31,7 +31,7 @@ export async function queueAndSend(db: SupabaseClient, adapter: EmailAdapter, in
   const headers: Record<string, string> = {};
   if (input.kind === 'marketing') {
     if (!ctx.linkSecret) return { ok: false, code: 'email_failed', error: 'LINK_SIGNING_SECRET missing' };
-    const token = signLink(ctx.linkSecret, 'unsubscribe', input.to.trim().toLowerCase(), 3 * 365 * 86400);
+    const token = signLink(ctx.linkSecret, 'unsubscribe', input.to.trim().toLowerCase(), LINK_TTL_SECONDS.unsubscribe);
     const url = `${ctx.appUrl}/u?t=${encodeURIComponent(token)}`;
     body += `\n\n--\n${ctx.settings.display_name || ''}\n${ctx.settings.postal_address || ''}\nUnsubscribe: ${url}\n`;
     headers['List-Unsubscribe'] = `<${ctx.appUrl}/api/unsubscribe?t=${encodeURIComponent(token)}>`;

@@ -5,6 +5,7 @@ import { leadAlertText, sendAlert } from './alerts';
 import { dealReminderDue, noReplyDue } from './logic';
 import { localDate, localHour, localWeekday, weekStart, formatDate } from './time';
 import { lastSuccess, lastFinished, runJob } from './jobs';
+import { USED_LINK_MEMORY_SECONDS } from './tokens';
 import { loadHealth } from './health-load';
 import { failingChecks, type Check } from './health';
 
@@ -177,7 +178,9 @@ export async function runTick(d: TickDeps) {
       });
     }
     await d.db.from('job_runs').delete().lt('started_at', new Date(d.now.getTime() - 90 * 86400000).toISOString());
-    await d.db.from('rate_limits').delete().lt('window_start', new Date(d.now.getTime() - 86400000).toISOString());
+    // Rate limit rows go after a day. "Link used" rows are kept longer than any short link lives.
+    await d.db.from('rate_limits').delete().lt('window_start', new Date(d.now.getTime() - 86400000).toISOString()).not('bucket', 'like', 'once:%');
+    await d.db.from('rate_limits').delete().lt('window_start', new Date(d.now.getTime() - USED_LINK_MEMORY_SECONDS * 1000).toISOString()).like('bucket', 'once:%');
     const failed = Object.entries(outcomes).filter(([, v]) => !v).map(([k]) => k);
     // The scheduler itself ran. Failed checks show on their own rows and go to the watchdog.
     return { ok: true, detail: failed.length ? `Ran. These checks failed: ${failed.join(', ')}` : 'All scheduled work ran.', value: failed };

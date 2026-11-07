@@ -42,7 +42,12 @@ export function fakeDb(init: {
       eq(c: string, v: any) { filters.push((r) => r[c] === v); return q; },
       neq(c: string, v: any) { filters.push((r) => r[c] !== v); return q; },
       is(c: string, v: any) { filters.push((r) => (v === null ? r[c] === null || r[c] === undefined : r[c] === v)); return q; },
-      not(c: string, op: string, v: any) { filters.push((r) => (op === 'is' && v === null ? r[c] !== null && r[c] !== undefined : r[c] !== v)); return q; },
+      not(c: string, op: string, v: any) {
+        if (op === 'is' && v === null) filters.push((r) => r[c] !== null && r[c] !== undefined);
+        else if (op === 'like') { const re = new RegExp(`^${String(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*')}$`); filters.push((r) => !re.test(String(r[c] ?? ''))); }
+        else filters.push((r) => r[c] !== v);
+        return q;
+      },
       gte(c: string, v: any) { filters.push((r) => r[c] != null && r[c] >= v); return q; },
       gt(c: string, v: any) { filters.push((r) => r[c] != null && r[c] > v); return q; },
       lte(c: string, v: any) { filters.push((r) => r[c] != null && r[c] <= v); return q; },
