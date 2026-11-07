@@ -166,4 +166,23 @@ r="$(sadmit "'critical', array['owner@example.com','backup@example.com'], 'Probl
 echo "$r" | grep -q '"send": true' || fail "at an alert number of 5, \"backup stopped\" was refused: $r"
 echo "  alert number 5: \"backup stopped\" still goes to both: ok"
 
+echo "== Migrations in the wrong order (review round 4, L4)"
+q -d postgres -c 'create database ord' >/dev/null
+q -d ord -f supabase/tests/auth-shim.sql >/dev/null
+for f in supabase/migrations/2026110600*.sql supabase/migrations/20261107000100_*.sql; do q -d ord -f "$f" >/dev/null; done
+q -d ord -c "update public.app_settings set daily_email_cap = 30, reserved_alert_budget = 40 where id" >/dev/null
+q -d ord -f supabase/migrations/20261107000200_review_fixes_2.sql >/dev/null 2>&1 && fail "0200 should have stopped at its cap check"
+if out="$(q -d ord -f supabase/migrations/20261107000300_alert_gate.sql 2>&1)"; then fail "0300 applied on a database where 0200 had not finished"; fi
+echo "$out" | grep -q '20261107000200_review_fixes_2.sql has not finished' || { echo "$out"; fail "0300 did not say why it stopped"; }
+[ "$(q -d ord -c "select count(*) from information_schema.columns where table_name = 'outbound_emails' and column_name = 'alert_class'")" = "0" ] || fail "0300 changed things before stopping"
+echo "  0300 stops before changing anything when 0200 has not finished: ok"
+guard() { q -d gate -c "select coalesce(substring(obj_description('private.outbound_guard()'::regprocedure, 'pg_proc') from 'version ([0-9]+)'), '0')"; }
+[ "$(guard)" = "3" ] || fail "the send guard after all migrations is not version 3"
+for f in supabase/migrations/20261107000200_review_fixes_2.sql supabase/migrations/20261107000100_review_fixes.sql; do
+  q -d gate -f "$f" >/dev/null 2>&1 || true
+  [ "$(guard)" = "3" ] || fail "running $f again after 0300 put an older send guard back"
+done
+q -d gate -c "select pg_get_functiondef('private.outbound_guard'::regproc)" | grep -q "notice_reserve" || fail "the send guard body is not the newest"
+echo "  0100 and 0200 run again after 0300 leave the newest send guard in place: ok"
+
 echo "DATABASE RULES TEST: passed"

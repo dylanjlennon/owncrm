@@ -8,9 +8,24 @@
 -- the same race doubled the lead list and the flood notice, M3).
 --
 -- Review round 4 (still this file, not applied anywhere before): reminders have their own reserve
--- (M2), one "Alerts paused for today" email when a share runs out (M2), and escalations always
--- keep room for two people (L5).
+-- (M2), one "Alerts paused for today" email when a share runs out (M2), escalations always keep
+-- room for two people (L5), and this file refuses to run before 20261107000200 has finished (L4).
 
+-- ---------------------------------------------------------------- 0200 must have finished (L4)
+-- 20261107000200_review_fixes_2.sql marks itself done on its last line. Without that mark, this
+-- file stops before changing anything: the app needs columns that 0200 adds.
+do $$
+begin
+  if to_regclass('private.schema_marks') is null then
+    raise exception using
+      message = 'Stopped before changing anything: 20261107000200_review_fixes_2.sql has not finished on this database.',
+      hint = 'Run 20261107000200_review_fixes_2.sql first. If it stops with a message, do what the message says and run it again. Then run this file.';
+  elsif not exists (select 1 from private.schema_marks where name = '20261107000200_review_fixes_2') then
+    raise exception using
+      message = 'Stopped before changing anything: 20261107000200_review_fixes_2.sql has not finished on this database.',
+      hint = 'Run 20261107000200_review_fixes_2.sql first. If it stops with a message, do what the message says and run it again. Then run this file.';
+  end if;
+end $$;
 
 -- ---------------------------------------------------------------- what each alert is
 -- alert_class: which share of the daily alert allowance the email used.
@@ -179,6 +194,8 @@ begin
   end if;
   return new;
 end $$;
+-- Version mark. 20261107000100 and 20261107000200 read it and leave a newer guard alone (L4).
+comment on function private.outbound_guard() is 'owncrm send guard version 3 (20261107000300_alert_gate.sql)';
 
 -- ---------------------------------------------------------------- the alert decision
 -- The app asks this function and never decides itself. It takes the lock, checks every rule,

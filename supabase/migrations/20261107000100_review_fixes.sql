@@ -106,6 +106,16 @@ end $$;
 -- 20261107000200_review_fixes_2.sql on, where alerts stop counting against client email).
 alter table public.app_settings alter column reserved_alert_budget set default 40;
 
+-- Review round 4, L4: this file may be run again after a newer one (its own message says "run
+-- this file again"). It then leaves a newer send guard in place instead of putting this older
+-- one back. The guard's version is in its comment.
+do $guard$
+begin
+  if coalesce(substring(obj_description(to_regprocedure('private.outbound_guard()'), 'pg_proc') from 'send guard version ([0-9]+)')::int, 0) > 1 then
+    raise notice 'A newer send guard is already in place. It was left as it is.';
+    return;
+  end if;
+  execute $sql$
 create or replace function private.outbound_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -189,6 +199,9 @@ begin
   end if;
   return new;
 end $$;
+$sql$;
+  comment on function private.outbound_guard() is 'owncrm send guard version 1 (20261107000100_review_fixes.sql)';
+end $guard$;
 
 -- ---------------------------------------------------------------- blue #2: daily all-clear on by default
 alter table public.app_settings alter column all_clear_enabled set default true;

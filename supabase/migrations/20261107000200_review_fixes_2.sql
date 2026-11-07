@@ -34,6 +34,16 @@ create index if not exists leads_held_idx on public.leads (received_at) where al
 -- client emails a day, always.
 -- N12: the alert ceiling is checked under a transaction lock, so two alerts sent at the same
 -- moment can't both see 39 and both go.
+-- Review round 4, L4: this file may be run again after a newer one (its own message says "run
+-- this file again"). It then leaves a newer send guard in place instead of putting this older
+-- one back. The guard's version is in its comment.
+do $guard$
+begin
+  if coalesce(substring(obj_description(to_regprocedure('private.outbound_guard()'), 'pg_proc') from 'send guard version ([0-9]+)')::int, 0) > 2 then
+    raise notice 'A newer send guard is already in place. It was left as it is.';
+    return;
+  end if;
+  execute $sql$
 create or replace function private.outbound_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare
@@ -118,6 +128,9 @@ begin
   end if;
   return new;
 end $$;
+$sql$;
+  comment on function private.outbound_guard() is 'owncrm send guard version 2 (20261107000200_review_fixes_2.sql)';
+end $guard$;
 
 -- The daily and monthly caps must leave room for client email after the alert reserve. An
 -- install where they don't was stopped at the top of this file, so the check can be added here.
@@ -184,3 +197,10 @@ begin
 end $$;
 revoke all on function private.restore_begin() from public, anon, authenticated, service_role;
 revoke all on function private.restore_finish() from public, anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------- done mark (review round 4, L4)
+-- The last statement of this file. 20261107000300_alert_gate.sql checks for it and stops if it is
+-- missing, so it can't be applied on a database where this file stopped partway.
+create table if not exists private.schema_marks (name text primary key, done_at timestamptz not null default now());
+revoke all on table private.schema_marks from public, anon, authenticated, service_role;
+insert into private.schema_marks (name) values ('20261107000200_review_fixes_2') on conflict (name) do nothing;
