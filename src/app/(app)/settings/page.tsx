@@ -2,7 +2,7 @@ import { requireOwner } from '@/lib/auth';
 import { getSettings } from '@/lib/settings';
 import { env } from '@/lib/env';
 import { Flash } from '@/components/Flash';
-import { saveAiKey, saveSettings, signOutEverywhere } from './actions';
+import { saveSettings, signOutEverywhere } from './actions';
 
 const ZONES = ['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','Pacific/Honolulu'];
 
@@ -10,7 +10,6 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const { db } = await requireOwner();
   const s = await getSettings(db);
-  const { data: ai } = await db.from('app_secrets').select('name, enabled, updated_at').eq('name', 'ai_api_key').maybeSingle();
   const formKey = env.leadFormKey();
   const formUrl = formKey ? `${env.appUrl()}/lead/${formKey}` : null;
   return (
@@ -47,14 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <button type="submit">Save settings</button>
       </form>
 
-      <form action={saveAiKey} className="stack panel">
-        <h2 style={{ marginTop: 0 }}>Optional AI key (off by default)</h2>
-        <p>Only for future server-side AI features. Leave this empty unless you need it. It is encrypted before it is saved and is never shown again. Never put a Claude.ai or other AI subscription login here: those are not allowed in apps like this. Rescuing your history uses your own AI agent on your own computer, not this key.</p>
-        <p>Status: {ai ? `Saved, ${ai.enabled ? 'on' : 'off'}` : 'No key saved'}</p>
-        <label>API key<input name="ai_api_key" type="password" autoComplete="off" maxLength={300} /></label>
-        <label className="check"><input type="checkbox" name="enabled" value="yes" defaultChecked={!!ai?.enabled} /> Turn it on</label>
-        <div className="row"><button className="quiet" type="submit">Save key</button>{ai && <button className="quiet" type="submit" name="remove" value="yes">Remove key</button>}</div>
-      </form>
+      <p className="panel">This app never asks for or stores an AI login or AI key. Rescuing your history uses your own AI agent, on your own computer, under your own account.</p>
 
       <form action={signOutEverywhere} className="panel row">
         <span className="grow">Lost a device? This ends every session, including this one.</span>

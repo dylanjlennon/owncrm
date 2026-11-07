@@ -29,7 +29,7 @@ const PLACEHOLDER = 'e2e-relay-not-a-real-key';
 const S = (n) => randomBytes(n).toString('hex');
 // Opt-outs can never be deleted, so each run uses its own fake addresses.
 const RUN = Date.now().toString(36);
-const secrets = { LINK_SIGNING_SECRET: S(24), LEAD_FORM_KEY: S(12), CRON_SECRET: S(24), BACKUP_REPORT_SECRET: S(24), RESEND_INBOUND_SECRET: `whsec_${randomBytes(24).toString('base64')}`, RESEND_WEBHOOK_SECRET: `whsec_${randomBytes(24).toString('base64')}`, APP_ENCRYPTION_KEY: S(32) };
+const secrets = { LINK_SIGNING_SECRET: S(24), LEAD_FORM_KEY: S(12), CRON_SECRET: S(24), BACKUP_REPORT_SECRET: S(24), RESEND_INBOUND_SECRET: `whsec_${randomBytes(24).toString('base64')}`, RESEND_WEBHOOK_SECRET: `whsec_${randomBytes(24).toString('base64')}` };
 const MAIL = '.e2e/mail.jsonl'; const INBOUND = '.e2e/inbound';
 const results = [];
 const check = (name, ok, detail = '') => { results.push({ name, ok: !!ok, detail: ok ? '' : String(detail).slice(0, 300) }); console.log(`${ok ? 'PASS' : 'FAIL'} ${name}${ok ? '' : `: ${String(detail).slice(0, 300)}`}`); };

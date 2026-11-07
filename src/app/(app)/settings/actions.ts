@@ -2,8 +2,6 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { requireOwner } from '@/lib/auth';
-import { encryptSecret } from '@/lib/secure';
-import { env } from '@/lib/env';
 
 const t = (f: FormData, k: string, max = 300) => String(f.get(k) ?? '').trim().slice(0, max);
 const int = (f: FormData, k: string, lo: number, hi: number, d: number) => { const n = Number(f.get(k)); return Number.isInteger(n) && n >= lo && n <= hi ? n : d; };
@@ -28,18 +26,6 @@ export async function saveSettings(f: FormData) {
   }).eq('id', true);
   revalidatePath('/', 'layout');
   redirect(`/settings?msg=${error ? 'bad_input' : 'saved'}`);
-}
-
-export async function saveAiKey(f: FormData) {
-  const { db } = await requireOwner();
-  const secret = env.encryptionKey();
-  if (!secret || secret.length < 32) redirect('/settings?msg=ai_key_unavailable');
-  const key = t(f, 'ai_api_key', 300);
-  if (f.get('remove') === 'yes') { await db.from('app_secrets').delete().eq('name', 'ai_api_key'); redirect('/settings?msg=ai_key_removed'); }
-  const enabled = f.get('enabled') === 'yes';
-  if (key) await db.from('app_secrets').upsert({ name: 'ai_api_key', ciphertext: encryptSecret(key, secret), enabled, updated_at: new Date().toISOString() });
-  else await db.from('app_secrets').update({ enabled, updated_at: new Date().toISOString() }).eq('name', 'ai_api_key');
-  redirect('/settings?msg=ai_key_saved');
 }
 
 export async function signOutEverywhere() {

@@ -39,7 +39,7 @@ const walk = (d) => readdirSync(d).flatMap((x) => (statSync(join(d, x)).isDirect
 if (existsSync('.next/static')) {
   for (const f of walk('.next/static').filter((x) => x.endsWith('.js'))) {
     const t = readFileSync(f, 'utf8');
-    for (const word of ['SUPABASE_SERVICE_ROLE_KEY', 'service_role', 'LINK_SIGNING_SECRET', 'CRON_SECRET', 'RESEND_API_KEY', 'APP_ENCRYPTION_KEY', 'supabase.co']) if (t.includes(word)) problems.push(`${f}: browser code mentions ${word}`);
+    for (const word of ['SUPABASE_SERVICE_ROLE_KEY', 'service_role', 'LINK_SIGNING_SECRET', 'CRON_SECRET', 'RESEND_API_KEY', 'supabase.co']) if (t.includes(word)) problems.push(`${f}: browser code mentions ${word}`);
     for (const m of t.matchAll(/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+\.[A-Za-z]{2,}/g)) if (!/^[\w.-]+@(next|react|vercel)\b/.test(m[0]) && /\.(com|org|net|io|us)$/i.test(m[0])) problems.push(`${f}: email address in browser code (${m[0]})`);
   }
 } else problems.push('.next/static not found: run the build before the scan');

@@ -1,6 +1,6 @@
 # Questions
 
-**Is this free?** No. A safe setup costs about $45 to $65 a month. Free plans aren't safe for a business: Vercel's free plan is non-commercial, and Supabase's free plan has no backups and pauses.
+**Is this free?** The software is free and open source (AGPL-3.0). Running it is not. A safe setup costs about $45 to $65 a month for the host, the database with backups, email and a domain, plus an AI plan (about $20 a month) if you don't already pay for one. Free plans aren't safe for a business: Vercel's free plan is non-commercial, and Supabase's free plan has no backups and pauses.
 
 **Is it a Follow Up Boss replacement?** No. It has no texting, calling, Zillow sync, team features or support line. You get ownership: the data, the code and the backups are yours.
 
@@ -14,9 +14,9 @@
 
 **Does it read my texts?** Not by itself. A web app can't read your phone. If you have a Mac, your own AI agent can read a copy of your iMessage history on that Mac, during "Connect your history", and only summaries and dates come into the CRM. There is no route for iMessage on Windows, or for iPhone texts without a Mac.
 
-**Will my AI see my clients' private details?** The rescue tools remove account numbers, card numbers, Social Security numbers, passwords, license numbers and wire details before your AI sees anything, and leave family, friends, medical and legal threads out. Your AI runs under your own account and its terms apply. Read your firm's policy first. The people you message didn't agree to AI processing.
+**Will my AI see my clients' private details?** Some, yes. Your files stay on your computer, but your AI agent's model runs on the AI company's servers, so whatever your AI reads is sent to that company under your account. The rescue tools try to remove account, routing, card, Social Security and license numbers, passwords and wire details first, and they skip threads they tag as medical, legal or family. That is a filter, not a guarantee. It does not catch passport numbers, pre-approval letters, bank statements, tax forms, health details outside its word list, or why someone is really moving. If you use a Gmail or Outlook connector in your AI app instead of an export file, the email goes to the AI company before any local cleaning runs. Before you start: turn off "use my data for training" in your AI plan's settings, read your firm's AI policy, and remember the people you message didn't agree to AI processing.
 
-**Does the CRM store my AI login?** Never. There is an optional AI API key setting for future server features. It is off by default and encrypted. Never put a Claude.ai or ChatGPT subscription login anywhere in this app.
+**Does the CRM store my AI login?** No. The app never stores an AI login, and it has no place to store an AI key either. Your AI agent runs on your own computer under your own account. Never put a Claude.ai or ChatGPT login anywhere in this app.
 
 **Can I email my whole list?** Not in this version. One-to-one email only. Imported people have unknown consent and can't get marketing email until you record their consent.
 

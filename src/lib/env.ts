@@ -13,7 +13,6 @@ export const env = {
   resendWebhookSecret: () => process.env.RESEND_WEBHOOK_SECRET,
   resendInboundSecret: () => process.env.RESEND_INBOUND_SECRET,
   healthcheckUrl: () => process.env.HEALTHCHECK_PING_URL,
-  encryptionKey: () => process.env.APP_ENCRYPTION_KEY,
   demoMode: () => process.env.DEMO_MODE === 'true',
   emailAdapter: () => process.env.EMAIL_ADAPTER || (process.env.RESEND_API_KEY ? 'resend' : 'off'),
 };
