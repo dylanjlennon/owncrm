@@ -22,7 +22,7 @@ export async function saveSettings(f: FormData) {
     all_clear_enabled: f.get('all_clear_enabled') === 'yes', all_clear_local_hour: int(f, 'all_clear_local_hour', 0, 23, 8),
     weekly_fake_lead_enabled: f.get('weekly_fake_lead_enabled') === 'yes',
     daily_email_cap: int(f, 'daily_email_cap', 10, 100000, 100), monthly_email_cap: int(f, 'monthly_email_cap', 100, 10000000, 3000),
-    reserved_alert_budget: int(f, 'reserved_alert_budget', 5, 1000, 25),
+    reserved_alert_budget: int(f, 'reserved_alert_budget', 5, 1000, 40),
   }).eq('id', true);
   revalidatePath('/', 'layout');
   redirect(`/settings?msg=${error ? 'bad_input' : 'saved'}`);

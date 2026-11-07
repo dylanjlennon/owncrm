@@ -12,12 +12,12 @@ import type { Settings } from './settings';
 //   other kind can't use. A form flood can't bury a "backup stopped" email, and a storm of
 //   failing checks can't stop new-lead alerts.
 // - At most leadPerHour lead alerts an hour. After that, one "Many new leads" note an hour, and
-//   the rest wait: the scheduler retries them, so nothing is dropped.
+//   the rest wait: the scheduler retries them, so nothing is dropped. Counted by lead, not by email.
 // - A system alert with a key (one per failing check) goes out once per dedupeHours.
 export const ALERT_POLICY = {
   leadPerHour: 10,
   dedupeHours: 12,
-  ceiling: (s: Settings) => Math.max(4, Number(s.reserved_alert_budget ?? 25)),
+  ceiling: (s: Settings) => Math.max(4, Number(s.reserved_alert_budget ?? 40)),
   leadReserve: (s: Settings) => Math.ceil(ALERT_POLICY.ceiling(s) * 0.4),
   systemReserve: (s: Settings) => Math.ceil(ALERT_POLICY.ceiling(s) * 0.3),
   systemShare: (s: Settings) => ALERT_POLICY.ceiling(s) - ALERT_POLICY.leadReserve(s),
@@ -53,7 +53,9 @@ export async function sendAlert(db: SupabaseClient, adapter: EmailAdapter, setti
     if (leadCount + to.length > ALERT_POLICY.leadShare(settings) || rows.length + to.length > ALERT_POLICY.ceiling(settings)) return { ok: false, sent: 0, held: 'ceiling' };
     const hourAgo = new Date(now.getTime() - 3600000).toISOString();
     const lastHour = rows.filter((r) => r.lead_id && r.created_at >= hourAgo);
-    if (lastHour.length >= ALERT_POLICY.leadPerHour) {
+    // Count leads, not emails: one lead can have a new-lead, a first and a second alert.
+    const leadsLastHour = new Set(lastHour.filter((r) => r.lead_id !== a.leadId).map((r) => r.lead_id));
+    if (leadsLastHour.size >= ALERT_POLICY.leadPerHour) {
       // One short note an hour instead of one email per lead.
       if (!lastHour.some((r) => r.subject.startsWith('Many new leads'))) {
         await queueAndSend(db, adapter, { to: settings.owner_email, subject: 'Many new leads in the last hour',

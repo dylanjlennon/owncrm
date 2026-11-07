@@ -62,7 +62,7 @@ for (const t of ['households', 'leads', 'inbound_emails', 'outbound_emails', 'em
   const { error } = await d0.from(t).delete().not(col, 'is', null);
   if (error) console.log(`cleanup ${t}: ${error.message}`);
 }
-await d0.from('app_settings').update({ first_run_ack_at: null, golive_completed_at: null, test_alert_confirmed_at: null, owner_email: accounts.owner_email, backup_email: 'backup-test@example.org', all_clear_enabled: false, sender_email: null, reply_to: null, postal_address: null, sending_paused: false, sending_paused_reason: null, daily_email_cap: 100, monthly_email_cap: 3000, reserved_alert_budget: 25, history_sync_expected_hours: null, timezone: 'America/New_York', no_reply_first_minutes: 5, no_reply_second_minutes: 15 }).eq('id', true);
+await d0.from('app_settings').update({ first_run_ack_at: null, golive_completed_at: null, test_alert_confirmed_at: null, owner_email: accounts.owner_email, backup_email: 'backup-test@example.org', sender_email: 'crm@example.com', all_clear_enabled: false, reply_to: null, postal_address: null, sending_paused: false, sending_paused_reason: null, daily_email_cap: 100, monthly_email_cap: 3000, reserved_alert_budget: 40, history_sync_expected_hours: null, timezone: 'America/New_York', no_reply_first_minutes: 5, no_reply_second_minutes: 15 }).eq('id', true);
 rmSync(MAIL, { force: true }); rmSync(INBOUND, { recursive: true, force: true }); mkdirSync(INBOUND, { recursive: true });
 await seedThroughApi(d0);
 
@@ -84,6 +84,7 @@ const page = await ctx.newPage();
 const cspViolations = [];
 ctx.on('page', (p) => p.on('console', (m) => { if (/Content Security Policy|Refused to (apply|load|execute)/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); }));
 page.on('console', (m) => { if (/Content Security Policy|Refused to (apply|load|execute)/i.test(m.text())) cspViolations.push(m.text().slice(0, 200)); });
+if (process.env.E2E_DEBUG) page.on('request', (r) => { if (r.method() === 'POST') console.log('  POST', r.url()); });
 if (process.env.E2E_DEBUG) page.on('response', (r) => { if (r.status() >= 300) console.log('  ', r.status(), r.request().method(), r.url(), r.headers()['location'] || ''); });
 const shot = async (name, p = page) => { await p.screenshot({ path: `${shots}/${name}.png`, fullPage: false }); };
 const msgAfter = async (selector) => { await Promise.all([page.waitForURL(/msg=/, { timeout: 30000 }), page.click(selector)]); await page.waitForLoadState('load'); return new URL(page.url()).searchParams.get('msg'); };
@@ -162,7 +163,9 @@ try {
   await page.click('[data-testid=followup] summary:has-text("Edit")');
   await page.fill('[data-testid=followup] details input[name=title]', 'Call Fresh about the second showing');
   const edited = await msgAfter('[data-testid=followup] details button:has-text("Save")');
-  check('a follow-up can be edited', edited === 'followup_saved' && (await page.textContent('body')).includes('Call Fresh about the second showing'), edited);
+  await page.waitForSelector('[data-testid=followup]:has-text("Call Fresh about the second showing")', { timeout: 10000 }).catch(() => {});
+  check('a follow-up can be edited', edited === 'followup_saved' && (await page.textContent('[data-testid=followup]')).includes('Call Fresh about the second showing'), edited);
+  await page.goto(freshUrl);
   const md = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(Date.now() + 3 * 86400000));
   await page.selectOption('select[name=birthday_month]', String(Number(md.slice(5, 7))));
   await page.fill('input[name=birthday_day]', String(Number(md.slice(8, 10))));
@@ -172,6 +175,7 @@ try {
   await page.goto(`${APP}/today`);
   check('upcoming birthdays show on Today', (await page.textContent('[data-testid=occasions]').catch(() => '')).includes('Fresh Testcase'));
   await page.goto(freshUrl);
+  await page.waitForSelector('[data-testid=followup]');
   await page.selectOption('[data-testid=followup] select[name=snooze]', '1d');
   const snoozed = await msgAfter('[data-testid=followup] button:has-text("Snooze")');
   const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date(Date.now() + 86400000));
@@ -395,14 +399,17 @@ try {
   await shot('10-red-banner');
   await cron();
   // ---- budget: client mail can't use the alert reserve, and alerts still go out ----
+  const { data: supp } = await db().from('suppressions').select('normalized').eq('kind', 'email');
+  const { data: open } = await db().from('v_households').select('id, primary_email, display_stage').not('primary_email', 'is', null).neq('display_stage', 'do not contact').limit(50);
+  const budgetTarget = open.find((h) => !supp.some((x) => x.normalized === h.primary_email.toLowerCase()));
   const { data: usage } = await db().from('v_email_usage').select('sent_today').single();
-  await db().from('app_settings').update({ daily_email_cap: usage.sent_today + 26, reserved_alert_budget: 25 }).eq('id', true);
+  await db().from('app_settings').update({ daily_email_cap: usage.sent_today + 41, reserved_alert_budget: 40 }).eq('id', true);
   for (let i = 0; i < 2; i++) {
-    await page.goto(`${APP}/contacts/${optedIn.id}`);
+    await page.goto(`${APP}/contacts/${budgetTarget.id}`);
     await page.fill('input[name=subject]', `Budget check ${i}`); await page.fill('textarea[name=body]', 'Hello');
     await msgAfter('button:has-text("Send")');
   }
-  await page.goto(`${APP}/contacts/${optedIn.id}`);
+  await page.goto(`${APP}/contacts/${budgetTarget.id}`);
   await page.fill('input[name=subject]', 'Over budget'); await page.fill('textarea[name=body]', 'Hello');
   const overBudget = await msgAfter('button:has-text("Send")');
   check('client mail stops at the daily limit minus the alert reserve', overBudget === 'email_blocked_budget' && !mails().some((m) => m.subject === 'Over budget'), overBudget);
@@ -410,7 +417,7 @@ try {
   const alertCode = await msgAfter('button:has-text("Send a test alert")');
   check('an alert still goes out when client mail is blocked', alertCode === 'test_alert_sent' && mails().filter((m) => m.subject === 'Test alert from your CRM').length === 2, alertCode);
   check('status says plainly that the deploy date is not an update check', (await page.textContent('[data-testid=check-deploy]')).includes('does not prove'));
-  await db().from('app_settings').update({ daily_email_cap: 100, reserved_alert_budget: 25 }).eq('id', true);
+  await db().from('app_settings').update({ daily_email_cap: 100, reserved_alert_budget: 40 }).eq('id', true);
   const failedCheckMail = mails().filter((m) => m.subject === 'Problem: Logged-out read test');
   check('a failing check emails once, not on every scheduler run', failedCheckMail.length <= 2, failedCheckMail.length);
 

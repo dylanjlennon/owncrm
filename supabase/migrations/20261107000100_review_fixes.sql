@@ -101,6 +101,11 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------- M2: alert ceiling in the send gate
+-- 40 a day held for alerts (was 25), so a busy day of leads with escalations still fits.
+-- On Resend's free plan (100 a day) that leaves 60 for one-to-one client email.
+alter table public.app_settings alter column reserved_alert_budget set default 40;
+update public.app_settings set reserved_alert_budget = 40 where id and reserved_alert_budget = 25 and golive_completed_at is null;
+
 create or replace function private.outbound_guard() returns trigger
 language plpgsql set search_path = '' as $$
 declare

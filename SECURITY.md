@@ -9,8 +9,11 @@ Open a private security advisory on the GitHub repository ("Security", "Report a
 - **Nothing for logged-out visitors.** Grants are explicit and the logged-out read test tries every table weekly.
 - **Opt-outs can't be bypassed.** The database checks every outgoing email against the opt-out list, do-not-contact flags, consent for marketing, and the alert budget, whoever sends it.
 - **Secrets stay on the server.** No setting starts with NEXT_PUBLIC. A build scan fails if browser code mentions a key or an email address.
-- **Public endpoints** each have their own secret or signature, a rate limit, a size limit and constant-time comparison. Signed email links do one thing each and never sign anyone in.
-- **Headers:** HSTS, a strict content policy, no framing, no sniffing, no referrer, no indexing, no caching.
+- **Public endpoints** each have their own secret or signature, a rate limit, a size limit and constant-time comparison. Signed email links do one thing each and never sign anyone in. The "wasn't me" and "I replied" links work once and expire after 24 hours.
+- **Owner-only helpers.** The database's helper functions (table list, database size, local date, cleanup, rate limiter) answer only the owner with a second factor and the server. Public signup must be off: go-live checks it again the moment you press Finish.
+- **Alerts can't be used to flood you.** Alerts have a daily ceiling enforced by the database, one email per red check per 12 hours, separate reserves for lead and system alerts, and a collapsed "Many new leads" email when the form is flooded.
+- **Headers:** HSTS, a strict content policy (scripts and styles need a per-request nonce), no framing except the lead form for the sites you list in LEAD_FORM_FRAME_ANCESTORS, no sniffing, no referrer, no indexing, no caching.
+- **No AI logins or keys.** The app has nowhere to store one.
 - **Backups** are encrypted before they leave, and checked for size and row counts.
 
 ## Threats to think about
@@ -18,9 +21,15 @@ Open a private security advisory on the GitHub repository ("Security", "Report a
 - **The service key** reads and writes everything. Never paste it into a chat, a screenshot or an email.
 - **Wire fraud.** A client list with deal dates helps criminals time fake wiring emails. Never keep wire instructions here; the rescue tools remove them.
 - **Phishing your own alerts.** Real alerts come from your sending domain and link to your CRM's address. Check before you click.
-- **Prompt injection.** Text in emails can try to give your AI orders. The rescue tools mark it as untrusted and refuse summaries that read like instructions, but read what your AI writes before you approve.
+- **Prompt injection.** Text in emails can try to give your AI orders. The rescue tools mark message text as untrusted, your AI can't approve anyone, unknown fields are dropped, and summaries that read like instructions are refused. That last check is a word pattern, and a determined message can get past it (other languages, odd spelling, text split over lines). **Your own review of every person and summary is the real control.** Never let your agent approve people for you.
+- **What the cleaning misses.** Redaction catches Social Security, card, account, routing and license numbers, passwords and wire details, and the importer refuses health and legal words. It does not catch passport numbers, pre-approval letters, bank statements, tax forms, health details outside its word list, or why someone is really moving. Read before you approve.
+- **Your AI company sees what your AI reads.** Your export files stay on your computer, but the snippets your agent reads go to its company under your account. Turn off training on your data in your AI plan's settings. A Gmail or Outlook connector sends email to the AI company before any local cleaning.
 - **Updates.** Nobody updates this for you. Next.js had a critical flaw in December 2025 that needed every site owner to act. Do the monthly check-up.
 - **The other person's privacy.** People in your threads didn't agree to AI processing. Keep the rescue to business relationships.
+
+## Known exceptions
+- **One-click unsubscribe carries its token in the address.** Email programs that offer a one-click "Unsubscribe" button (RFC 8058) POST to the exact address in the email's List-Unsubscribe header, so the signed token has to be in that address, and it can land in a proxy's or host's access log. The token can only add that one email address to your opt-out list, which is the safe direction and can't be undone, so a leaked one does no harm. Every other token stays out of addresses: the history token goes in a header, and the "I replied" and "wasn't me" pages send theirs in a form body. `Referrer-Policy: no-referrer` keeps addresses from leaking to other sites.
+- **The scheduled rescue's token** lives in `owncrm.env` in your rescue work folder, readable only by you (the tool refuses the file otherwise). It is never written into a crontab line, a scheduled task or a log.
 
 ## Known limits
 - The scheduler and alerts depend on Vercel, Supabase and Resend. The outside watchdog catches silence, not slowness.

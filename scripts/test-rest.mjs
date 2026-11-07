@@ -33,6 +33,22 @@ const del = await api(url, anon, '/rest/v1/suppressions?normalized=eq.rest-optou
 check('owner cannot delete an opt-out through the API', del.status >= 400, del);
 const send = await api(url, anon, '/rest/v1/outbound_emails', { method: 'POST', token: aal2.access_token, body: { to_address: 'REST-OPTOUT@example.com', subject: 's', body_text: 'b', kind: 'one_to_one' } });
 check('direct API send to an opted-out address is blocked', send.status >= 400 && JSON.stringify(send.data).includes('blocked_suppressed'), send);
+// M1 (review fixes): helper functions answer only the owner with a second factor. These need
+// migration 20261107000100 on the project. Until it is applied they are reported, not failed.
+const migrated = (await api(url, anon, '/rest/v1/tasks?select=repeat_days&limit=1', { token: aal2.access_token })).status === 200;
+const helperChecks = [
+  ['non-owner gets no table list', async () => { const r = await api(url, anon, '/rest/v1/rpc/list_app_tables', { method: 'POST', token: other.access_token, body: {} }); return r.status >= 400 || (Array.isArray(r.data) && r.data.length === 0); }],
+  ['owner without second factor gets no table list', async () => { const r = await api(url, anon, '/rest/v1/rpc/list_app_tables', { method: 'POST', token: aal1.access_token, body: {} }); return r.status >= 400 || (Array.isArray(r.data) && r.data.length === 0); }],
+  ['non-owner gets no database size', async () => { const r = await api(url, anon, '/rest/v1/rpc/db_size_bytes', { method: 'POST', token: other.access_token, body: {} }); return r.status >= 400 || r.data === null; }],
+  ['non-owner cannot run cleanup', async () => (await api(url, anon, '/rest/v1/rpc/run_hygiene', { method: 'POST', token: other.access_token, body: {} })).status >= 400],
+  ['non-owner cannot use the rate limiter', async () => (await api(url, anon, '/rest/v1/rpc/hit_rate_limit', { method: 'POST', token: other.access_token, body: { p_bucket: 'rest-x', p_max: 5, p_window_seconds: 60 } })).status >= 400],
+  ['owner with second factor gets the table list', async () => { const r = await api(url, anon, '/rest/v1/rpc/list_app_tables', { method: 'POST', token: aal2.access_token, body: {} }); return r.status === 200 && r.data.length > 10; }],
+];
+for (const [name, fn] of helperChecks) {
+  const ok = await fn();
+  if (migrated) check(name, ok, '');
+  else console.log(`${ok ? 'PASS' : 'PENDING'} ${name}${ok ? '' : ' (apply supabase/migrations/20261107000100_review_fixes.sql to this project; see docs/TEST-PROJECT.md)'}`);
+}
 const settingsPublic = await api(url, anon, '/auth/v1/settings');
 console.log(`Public signup on this project: ${settingsPublic.data.disable_signup ? 'off' : 'ON (the self-test flags this; the database trigger still refuses new accounts)'}`);
 const failed = results.filter((r) => !r.ok);

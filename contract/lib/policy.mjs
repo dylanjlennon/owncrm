@@ -12,7 +12,7 @@ export const ROW_FIELDS = ['client_row_id','name','email','phone','first_contact
 
 // Words that describe who someone is rather than what happened. Suggestions and summaries
 // containing them are refused: ranking uses dates and interaction patterns only.
-const PROTECTED = [
+export const PROTECTED = [
   'race','racial','black','white','hispanic','latino','latina','asian','ethnic','ethnicity','national origin','immigrant',
   'religion','religious','christian','jewish','muslim','hindu','church','synagogue','mosque',
   'gay','lesbian','bisexual','transgender','queer','sexual orientation','gender identity',

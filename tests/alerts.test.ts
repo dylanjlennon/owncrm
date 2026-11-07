@@ -15,7 +15,7 @@ const settings = (over: Record<string, any> = {}) => ({
   id: true, timezone: NOON_TZ, owner_email: 'owner@example.com', backup_email: 'backup@example.com', sender_email: 'crm@example.com',
   display_name: 'Demo Agent', reply_to: null, postal_address: null, no_reply_first_minutes: 5, no_reply_second_minutes: 15,
   reminder_local_hour: 8, all_clear_enabled: true, all_clear_local_hour: 0, weekly_fake_lead_enabled: false,
-  daily_email_cap: 100, monthly_email_cap: 3000, reserved_alert_budget: 25, sending_paused: false, history_sync_expected_hours: null,
+  daily_email_cap: 100, monthly_email_cap: 3000, reserved_alert_budget: 40, sending_paused: false, history_sync_expected_hours: null,
   golive_completed_at: hoursAgo(24 * 10), ...over,
 });
 
@@ -168,5 +168,20 @@ describe('go-live can finish', () => {
     const r = await finishGoLive(db as any, async () => ({ ok: false, detail: 'Public signup is ON.' }));
     expect(r.done).toBe(false);
     expect(db.tables.app_settings[0].golive_completed_at).toBeNull();
+  });
+});
+
+describe('M2: one lead with escalations is not a flood', () => {
+  it('counts leads per hour, not emails', async () => {
+    const db = world();
+    const adapter = new MockAdapter();
+    const s = (await db.from('app_settings').select('*').single()).data;
+    for (let i = 0; i < 6; i++) {
+      for (const subject of ['New lead', 'No reply yet', 'Still no reply']) {
+        await sendAlert(db as any, adapter, s, 'https://crm.example.com', { subject: `${subject}: Lead ${i}`, text: 'x', leadId: `l${i}`, householdId: 'h1', alsoBackup: subject === 'Still no reply' });
+      }
+    }
+    expect(adapter.sent.some((m) => /Many new leads/.test(m.subject))).toBe(false);
+    expect(adapter.sent.filter((m) => m.subject === 'Still no reply: Lead 5').length).toBe(2);
   });
 });

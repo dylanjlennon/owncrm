@@ -3,14 +3,14 @@
 export type Cap = { item: string; verdict: 'Can' | 'Later' | "Can't" | "Won't"; truth: string };
 export const CAPABILITIES: Cap[] = [
   { item: 'Contacts, notes, follow-ups and deal dates in a database you own', verdict: 'Can', truth: 'One owner login with a second factor. Every row is locked to you by the database.' },
-  { item: 'Website leads, forwarded lead emails and CSV files', verdict: 'Can', truth: 'Realtor.com forwarded emails use a parser built from a sample. Anything it can\'t read goes to Needs review. Nothing is dropped.' },
+  { item: 'Website leads, forwarded lead emails and CSV files', verdict: 'Can', truth: 'Realtor.com forwarded emails use a parser built from a sample and tested on fake files only. Other lead emails go to Needs review for you to sort. Nothing is dropped once the email reaches the app.' },
   { item: 'New-lead and no-reply alerts by email', verdict: 'Can', truth: 'Email only. Make the sender a VIP on your phone so it actually gets your attention.' },
   { item: 'One-to-one email with opt-out enforcement', verdict: 'Can', truth: 'Needs a domain you control. Replies land in your normal inbox, not here.' },
   { item: 'Backup, full export and warnings when something breaks', verdict: 'Can', truth: 'Only if you set up the nightly backup and the outside watchdog. A backup counts once you have restored it.' },
-  { item: 'Find relationships in your own past email and texts', verdict: 'Can', truth: 'Your own AI agent does this on your own computer. Only summaries and dates come here, and only for people you approve.' },
-  { item: 'iMessage history', verdict: 'Can', truth: 'Mac only, from a read-only copy, after you grant Full Disk Access. Only what is on that Mac. Deleted messages won\'t appear. A web app alone can\'t read iMessage, and Windows has no route.' },
+  { item: 'Find relationships in your own past email and texts', verdict: 'Can', truth: 'Your own AI agent does this under your own account. Your files stay on your computer, but what your AI reads goes to your AI company. Only summaries and dates come here, for people you approve. Tested on fake files only.' },
+  { item: 'iMessage history', verdict: 'Can', truth: 'Mac only, from a read-only copy, after you grant Full Disk Access. Only what is on that Mac. Deleted messages won\'t appear. Tested on fake files only, not on a real Mac. Windows has no route.' },
   { item: 'iPhone texts without a Mac', verdict: "Can't", truth: 'No supported way. Use your phone contacts export instead.' },
-  { item: 'Google Voice and Android texts', verdict: 'Can', truth: 'From a Google Takeout export or an SMS backup file. No live connection.' },
+  { item: 'Google Voice and Android texts', verdict: 'Can', truth: 'From a Google Takeout export or an SMS backup file. No live connection. Tested on fake files only.' },
   { item: 'Scheduled history sync', verdict: 'Can', truth: 'Runs on your computer only while it is on and signed in. Status warns you when it goes quiet.' },
   { item: 'Zillow leads, direct or two-way', verdict: "Can't", truth: 'Zillow only connects to CRMs on its approved list.' },
   { item: 'Texting from the CRM, calling and call recording', verdict: 'Later', truth: 'Needs Twilio, carrier registration and per-message costs. Not in this version.' },
