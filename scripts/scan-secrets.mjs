@@ -11,7 +11,9 @@ const FORBIDDEN_IDS = new Set(['c1116d7b4668471b55946d0ef722bbe35046c47e0471726a
 
 const files = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard'], { encoding: 'utf8' }).split('\n').filter(Boolean);
 const SKIP = /\.(png|jpe?g|gif|woff2?|ico|pdf)$|^package-lock\.json$/;
-const ALLOWED_EMAIL = /@(([\w-]+\.)*example\.(com|org|net)|email\.realtor\.com|anthropic\.com)$/i;
+// Lead site sending domains (src/lib/parsers/realtor.ts, PORTAL_DOMAINS) are named in code and tests
+// as senders, never as clients.
+const ALLOWED_EMAIL = /@(([\w-]+\.)*example\.(com|org|net)|([\w-]+\.)*(realtor|move|zillow|trulia|homes|redfin)\.com|anthropic\.com)$/i;
 const RULES = [
   ['JWT or Supabase key', /eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/],
   ['Supabase secret key', /sb_secret_[A-Za-z0-9_-]{10,}/],

@@ -16,9 +16,9 @@ export function htmlToText(html: string | null | undefined, max = HTML_TEXT_MAX)
 }
 
 /**
- * The address a From header names: the one in angle brackets at the end ("Name" <a@b.com>), or the
+ * The address a From header names: the one in angle brackets at the end ("Name" <a@b.example.com>), or the
  * whole header when it is a bare address. Null for anything else, so an address typed into the
- * display name ("leads@zillow.com" <x@junk.example>) is never taken for the sender. The header is
+ * display name ("leads@zillow.com" <x@junk.example.com>) is never taken for the sender. The header is
  * cut to 1,000 characters first, and neither rule can run past the next "<".
  */
 export function fromAddress(from: string | null | undefined): string | null {
