@@ -83,8 +83,12 @@ export async function addFollowUp(f: FormData) {
 export async function markDone(f: FormData) {
   const { db } = await requireOwner();
   const taskId = id(f);
-  const { data: task } = await db.from('tasks').select('*').eq('id', taskId).maybeSingle();
-  await db.from('tasks').update({ done_at: new Date().toISOString() }).eq('id', taskId);
+  // Close it only if it is still open, and read back what actually changed. A double click,
+  // Back and resubmit, or Done on a stale page changes nothing the second time, so a
+  // repeating follow-up is never added twice.
+  const { data: closed } = await db.from('tasks').update({ done_at: new Date().toISOString() })
+    .eq('id', taskId).is('done_at', null).select('id, household_id, title, due_on, repeat_days');
+  const task = (closed ?? [])[0];
   // A repeating follow-up comes back after its interval.
   if (task?.repeat_days) {
     const s = await getSettings(db);
