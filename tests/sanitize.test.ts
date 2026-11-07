@@ -136,3 +136,27 @@ describe('N11 and H1/H3 round 2: Unicode, plurals and missed shapes', async () =
       expect(mentionsHealthOrLegal(t), t).toBe(false);
   });
 });
+
+describe('L3 round 3: SSNs written with Unicode dashes and other shapes', async () => {
+  const { containsSensitive, normalizeText, redact } = await import('../contract/lib/redact.mjs');
+  it.each([
+    ['en dash', '123–45–6789'], ['em dash', '123—45—6789'], ['minus sign', '123−45−6789'],
+    ['non-breaking hyphen', '123‑45‑6789'], ['hyphen', '123‐45‐6789'], ['figure dash', '123‒45‒6789'],
+    ['small hyphen-minus', '123﹣45﹣6789'], ['fullwidth hyphen', '123－45－6789'], ['horizontal bar', '123―45―6789'],
+    ['mixed', '123–45-6789'], ['slashes', '123/45/6789'], ['Arabic-Indic digits', '١٢٣٤٥٦٧٨٩'],
+    ['Devanagari digits', '१२३-४५-६७८९'], ['as the start of an email address', 'my ssn 123-45-6789@example.com'],
+    ['routing glued to an address', '021000021@example.com'],
+  ])('catches an SSN with %s', (_n, text) => {
+    expect(containsSensitive(text)).toBe(true);
+  });
+  it('turns every kind of dash into a plain hyphen', () => {
+    expect(normalizeText('a–b—c−d‑e')).toBe('a-b-c-d-e');
+  });
+  it('a literal NUL in the text is not turned into "undefined"', () => {
+    expect(redact('x\u00007\u0000y').text).not.toContain('undefined');
+  });
+  it('still leaves real addresses and dates alone', () => {
+    for (const t of ['test-lead-1762450000000@example.com', 'demo.agent2026@example.com', '11/07/2026', '2026–11–07', 'Lot 12–14', '$450,000–$475,000'])
+      expect(containsSensitive(t), t).toBe(false);
+  });
+});

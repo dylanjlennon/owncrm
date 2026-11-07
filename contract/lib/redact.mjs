@@ -24,11 +24,24 @@ export const MAX_CHECK_CHARS = 10_000;
  * letters into plain ones, and invisible format characters (zero-width spaces, soft hyphens,
  * direction marks) are removed. Otherwise "１２３４５６７８９" or "123<zero-width space>456789"
  * would get past every rule. Runs of spaces and tabs become one space, so padding can neither
- * hide a number from a rule nor make a rule slow.
+ * hide a number from a rule nor make a rule slow. Every kind of dash (en dash, em dash, minus
+ * sign, non-breaking hyphen: what Word and Excel often put in by themselves) becomes a plain
+ * hyphen, and digits from other scripts (Arabic-Indic, Devanagari and so on) become 0 to 9.
  * @param {string} text
  */
 export function normalizeText(text) {
-  return String(text).normalize('NFKC').replace(/\p{Cf}/gu, '').replace(/[^\S\r\n]+/g, ' ');
+  return String(text).normalize('NFKC').replace(/[\p{Cf}\u0000]/gu, '').replace(/[^\S\r\n]+/g, ' ')
+    .replace(/[\p{Pd}\u2212\u2043\u2796\u2E3A\u2E3B]/gu, '-')
+    .replace(/[^\x00-\x7F]/gu, (c) => (/\p{Nd}/u.test(c) ? asciiDigit(c) : c));
+}
+
+// Unicode keeps each script's digits 0 to 9 in a row, so a digit's value is its distance from
+// the first code point of that row.
+function asciiDigit(/** @type {string} */ c) {
+  const cp = /** @type {number} */ (c.codePointAt(0));
+  let zero = cp;
+  while (cp - zero < 9 && /\p{Nd}/u.test(String.fromCodePoint(zero - 1))) zero--;
+  return String(cp - zero);
 }
 
 // A digit run's edges: not touching another digit, and not part of a decimal ("021000021.5") or a
@@ -47,8 +60,8 @@ const SEP = String.raw`[\s\-_.:#]{0,4}`;
 const RULES = [
   { name: 'wire instructions', re: /^[^\n]*?\b(?:wire|wiring|routing|aba|swift|iban|beneficiary|account[\s#]{0,3}(?:no|number|#))\b[^\n]*/gim },
   { name: 'password', re: /\b(?:password|passcode|passwd|pwd|pin)\b\s{0,3}(?:is\s{0,3}:?|:|=)\s{0,3}\S+/gi },
-  // SSN shapes: 123-45-6789, 123.45.6789, 123 45 6789, 123-456-789, 123 456 789.
-  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}[-.\s]\d{2}[-.\s]\d{4}${END}`, 'g') },
+  // SSN shapes: 123-45-6789, 123.45.6789, 123 45 6789, 123/45/6789, 123-456-789, 123 456 789.
+  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}[-./\s]\d{2}[-./\s]\d{4}${END}`, 'g') },
   { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}([-.\s])\d{3}\1\d{3}${END}`, 'g') },
   { name: 'SSN', re: new RegExp(String.raw`${START}\d{5}[.\s]\d{4}${END}`, 'g') },
   // With the word: "SSN 123456789", "ss# 12345 6789", "social security number: 123-45-6789".
@@ -83,7 +96,8 @@ export function redact(text) {
   // character.
   /** @type {string[]} */
   const emails = [];
-  let out = normalizeText(input).replace(/(?<![^\s@<>(),;:"'])[^\s@<>(),;:"']+@[^\s@<>(),;:"']+\.[A-Za-z]{2,}/g, (m) => `\u0000${emails.push(m) - 1}\u0000`);
+  let out = normalizeText(input).replace(/(?<![^\s@<>(),;:"'])[^\s@<>(),;:"']+@[^\s@<>(),;:"']+\.[A-Za-z]{2,}/g,
+    (m) => (/[A-Za-z]/.test(m.slice(0, m.indexOf('@'))) ? `\u0000${emails.push(m) - 1}\u0000` : m));
   for (const rule of RULES) {
     out = out.replace(rule.re, (m) => {
       if (rule.test && !rule.test(m)) return m;
