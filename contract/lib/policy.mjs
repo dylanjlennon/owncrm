@@ -82,23 +82,39 @@ export const HEALTH_LEGAL_RE = new RegExp([
   String.raw`\b(lawsuits?|sued|suing|custody|custodial|divorc\w*|court (?:date|hearing|order)s?|subpoena\w*|bankrupt\w*|chapter (?:7|11|13)\b(?: filing| bankruptcy)?|foreclos\w*|arrest\w*|criminal|felon\w*|misdemeanou?r\w*|probation|parole|restraining orders?|eviction lawsuits?|judgments? against|jail\w*|prison\w*|incarcerat\w*|dui|dwi|indict\w*|convict(?:ed|ion)s?|litigat\w*)\b`,
 ].join('|'), 'i');
 // Some of those words are ordinary real estate wording in the right place. A match is let
-// through only in these narrow cases (tests/sanitize.test.ts has the list that must pass):
-// - part of a street name: "Prison Camp Rd", "45 Hospital Dr", "Doctors Dr";
-// - a building, not a person: "old jail renovated into lofts", "close to Mission Hospital";
-// - a set phrase: "a stroke of luck", "nearly gave me a heart attack";
-// - a "no ..." disclosure: "no pending litigation", "no judgments against the HOA";
+// through only in these narrow cases (tests/sanitize.test.ts has the list that must pass, and the
+// list that must still be refused):
+// - part of a street name: "Prison Camp Rd", "45 Hospital Dr", "Doctors Dr". Not when a name
+//   follows the street word: "Dialysis Center Dr Patel", "Surgery St Joseph" (a doctor, a saint);
+// - a building, not a person: "old jail renovated into lofts", "close to Mission Hospital".
+//   "Old" and "former" count only when a building word follows ("former prison converted", not
+//   "former prison inmate" or "two years in the old county jail");
+// - a set phrase: "a stroke of luck", "nearly gave me a heart attack" (not "nearly a heart attack");
+// - a "no ..." disclosure: "no pending litigation", "no judgments against the HOA". For
+//   bankruptcy only "no" counts, not "without" or "free of";
 // - the property, not the owner: "foreclosure listing", "bank-owned foreclosure", "full rehab".
+//   "Needs rehab" alone, "rehab costs" with no house word nearby and "foreclosure sale" are
+//   refused (review round 4, L2): they are as often about a person.
 // Anything else that matches is refused, as before.
-const STREET_AFTER = /^(?:\s+[A-Z][a-z]+){0,2}\s+(?:Rd|Road|St|Street|Ave|Avenue|Dr|Drive|Ln|Lane|Way|Ct|Blvd|Boulevard|Cir|Circle|Pl|Place|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Ridge|Cove|Creek|Branch|Gap|Mtn)\b/;
+const STREET_AFTER = /^(?:\s+[A-Z][a-z]+){0,2}\s+(?:Rd|Road|St|Street|Ave|Avenue|Dr|Drive|Ln|Lane|Way|Ct|Blvd|Boulevard|Cir|Circle|Pl|Place|Pkwy|Parkway|Hwy|Highway|Trl|Trail|Loop|Ridge|Cove|Creek|Branch|Gap|Mtn)\b(?!\.?\s+[A-Z][a-z])/;
 const BUILDING = /^(?:jails?|prisons?|hospitals?|clinics?|hospices?)$/i;
 const BUILDING_BEFORE = [
-  /\b(?:old|former|historic|converted|renovated|abandoned)\s+(?:[\w'-]+\s+)?$/i,
+  /\b(?:historic|converted|renovated|abandoned)\s+(?:[\w'-]+\s+)?$/i,
   /(?:^|\b)(?:[Nn]ear(?:by)?|[Cc]lose to|[Nn]ext to|[Aa]cross from|[Mm]inutes (?:to|from)|[Ww]alk(?:ing)? (?:distance )?to|[Dd]rive to)\s+(?:the\s+)?(?:[A-Z][\w.'-]*\s+){0,3}$/,
 ];
+// "Old" or "former" before the word, and a building word after it.
+const OLD_BEFORE = /\b(?:old|former)\s+(?:[\w'-]+\s+)?$/i;
+const BUILDING_AFTER = /^\s+(?:buildings?|site|property|complex|campus|grounds|converted|renovated|redeveloped|restored|turned|transformed|now|lofts?|condos?|apartments?)\b/i;
 const NEGATED = /^(?:litigat\w*|lawsuits?|judgments? against|bankrupt\w*|foreclos\w*|liens?)$/i;
 const NEGATED_BEFORE = /\b(?:no|not any|without|free of|free from)\s+(?:(?:pending|known|current|open|outstanding|active|recorded|threatened|or)\s+){0,3}$/i;
-const PROPERTY_AFTER = /^\s+(?:listings?|sales?|auctions?|propert(?:y|ies)|homes?|houses?|market|inventory|deals?|lists?|projects?|loans?|budgets?|costs?|needed|required|work|estimates?|candidates?|specials?)\b/i;
-const PROPERTY_BEFORE = /\b(?:bank[- ]owned|reo|pre-|full|complete|gut|light|heavy|total|needs?(?: a)?|cosmetic|major|minor)\s*$/i;
+const NEGATED_BEFORE_STRICT = /\b(?:no|not any)\s+(?:(?:pending|known|current|open|outstanding|active|recorded|threatened|or)\s+){0,3}$/i;
+const FORECLOSURE_AFTER = /^\s+(?:listings?|auctions?|propert(?:y|ies)|homes?|houses?|market|inventory|deals?|lists?)\b/i;
+const FORECLOSURE_BEFORE = /\b(?:bank[- ]owned|reo|pre-)\s*$/i;
+const REHAB_BEFORE = /\b(?:full|complete|gut|light|heavy|total|cosmetic|major|minor|needs? an?)\s*$/i;
+const REHAB_AFTER = /^\s+(?:needed|required|projects?|loans?|work|candidates?|specials?|propert(?:y|ies)|homes?|houses?|deals?|listings?)\b/i;
+// "Rehab costs", "rehab budget": only with a house word near it ("kitchen rehab costs").
+const REHAB_COST_AFTER = /^\s+(?:costs?|budgets?|estimates?)\b/i;
+const HOUSE_WORD = /\b(?:house|home|property|kitchen|roof|bath(?:room)?s?|unit|condo|duplex|listing|flip|floors?|basement|deck|siding)\b/i;
 
 /** True when the match at index i is one of the allowed real estate uses above. */
 function allowedUse(/** @type {string} */ t, /** @type {number} */ i, /** @type {string} */ word) {
@@ -106,10 +122,14 @@ function allowedUse(/** @type {string} */ t, /** @type {number} */ i, /** @type 
   const after = t.slice(i + word.length, i + word.length + 60);
   if (/^[A-Z]/.test(word) && STREET_AFTER.test(after)) return true;
   if (BUILDING.test(word) && BUILDING_BEFORE.some((re) => re.test(before))) return true;
+  if (BUILDING.test(word) && OLD_BEFORE.test(before) && BUILDING_AFTER.test(after)) return true;
   if (/^strokes?$/i.test(word) && /^\s+of\b/i.test(after)) return true;
-  if (/^heart attacks?$/i.test(word) && /\b(?:gave|give|gives|giving|almost|nearly)\s+(?:me|him|her|us|you|them)?\s*an?\s+$/i.test(before)) return true;
+  if (/^heart attacks?$/i.test(word) && /\b(?:gave|give|gives|giving)\s+(?:me|him|her|us|you|them)\s+an?\s+$/i.test(before)) return true;
+  if (/^bankrupt/i.test(word)) return NEGATED_BEFORE_STRICT.test(before);
   if (NEGATED.test(word) && NEGATED_BEFORE.test(before)) return true;
-  if (/^(?:foreclos\w*|rehab)$/i.test(word) && (PROPERTY_AFTER.test(after) || PROPERTY_BEFORE.test(before))) return true;
+  if (/^foreclos/i.test(word) && (FORECLOSURE_AFTER.test(after) || FORECLOSURE_BEFORE.test(before))) return true;
+  if (/^rehab$/i.test(word) && (REHAB_BEFORE.test(before) || REHAB_AFTER.test(after)
+    || (REHAB_COST_AFTER.test(after) && (HOUSE_WORD.test(before) || HOUSE_WORD.test(after))))) return true;
   if (/^rehabb(?:ed|ing)$/i.test(word)) return true;
   return false;
 }

@@ -227,3 +227,54 @@ describe('L3 and L4 round 3, from the red team probe', () => {
     for (const t of ['loan # 1234567', 'loan number 12345678', 'loan no. 0012345', 'loan#1234567']) expect(containsSensitive(t), t).toBe(true);
   });
 });
+
+// Review round 4, L2: real health and legal text the narrow real estate exceptions let through.
+// Each must be refused again, while every phrase in REAL_ESTATE_FALSE_POSITIVES above still passes.
+export const ROUND4_MUST_REFUSE = [
+  "Son's rehab costs are why they are selling",
+  'Husband needs rehab, wants one-level home',
+  'needs rehab',
+  'Their house goes to foreclosure sale on 12/3',
+  'foreclosure sale',
+  'Seller cannot close without bankruptcy trustee approval',
+  'bankruptcy trustee',
+  'Free of bankruptcy since 2024',
+  'Buyer is a former prison inmate',
+  'prison inmate',
+  'Spent two years in the old county jail',
+  'Nearly a heart attack last spring',
+  'Dialysis Center Dr Patel said no stairs',
+  'Surgery St Joseph next week',
+  'Their house is in foreclosure',
+];
+describe('L2 round 4: the real estate exceptions are narrower', () => {
+  it.each(ROUND4_MUST_REFUSE)('refuses "%s"', (t) => {
+    expect(mentionsHealthOrLegal(t)).toBe(true);
+  });
+  it('the 21 real estate phrases that passed before still pass', () => {
+    expect(REAL_ESTATE_FALSE_POSITIVES).toHaveLength(21);
+    for (const t of REAL_ESTATE_FALSE_POSITIVES) expect(mentionsHealthOrLegal(t), t).toBe(false);
+  });
+  it('the property uses of the narrowed words still pass', () => {
+    for (const t of ['Kitchen rehab costs about 40k', 'Needs a rehab, priced to sell', 'No bankruptcy filings on record', 'Former prison building for sale',
+      'The old hospital site is now apartments', 'Historic jail on Main', 'gut rehab project'])
+      expect(mentionsHealthOrLegal(t), t).toBe(false);
+  });
+});
+
+// Review round 4, L3: number shapes typed by hand or printed on statements.
+describe('L3 round 4: spaced-dash SSNs, grouped account numbers, cards with dots', () => {
+  it.each([
+    '123 - 45 - 6789', '123 -45- 6789', '123- 45 -6789', 'SSN: 123 456789', 'SSN 123_45_6789', '123_45_6789', '123 - 456 - 789',
+    'acct 1234-5678-9012', 'account 1234 5678 9012', 'Account no. 12 3456 7890', 'a/c 9876-543210',
+    '4111.1111.1111.1111', '4111_1111_1111_1111', '4111 1111 1111 1111', '4111-1111-1111-1111',
+  ])('catches "%s"', (t) => {
+    expect(containsSensitive(t)).toBe(true);
+  });
+  it.each([
+    '828 - 555 - 0142', '(828) 555-0142', 'account ending 4321', 'account 2 bedrooms 3 baths', 'Account manager since 2019', 'acct 12 34',
+    'NC 28801 2019 build', 'zip 28803 2004 remodel', 'Lot 12 - 14', '2026 - 11 - 07', 'MLS# 4123456', 'Offer 450000, MLS 4123456, zip 28801-1234',
+  ])('leaves "%s" alone', (t) => {
+    expect(containsSensitive(t)).toBe(false);
+  });
+});

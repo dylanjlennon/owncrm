@@ -62,21 +62,27 @@ const SEP = String.raw`[\s\-_.:#]{0,4}`;
 const RULES = [
   { name: 'wire instructions', re: /^[^\n]*?\b(?:wire|wiring|routing|aba|swift|iban|beneficiary|account[\s#]{0,3}(?:no|number|#))\b[^\n]*/gim },
   { name: 'password', re: /\b(?:password|passcode|passwd|pwd|pin)\b\s{0,3}(?:is\s{0,3}:?|:|=)\s{0,3}\S+/gi },
-  // SSN shapes: 123-45-6789, 123.45.6789, 123 45 6789, 123/45/6789, 123-456-789, 123 456 789.
-  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}[-./\s]\d{2}[-./\s]\d{4}${END}`, 'g') },
-  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}([-.\s])\d{3}\1\d{3}${END}`, 'g') },
-  // With the word: "SSN 123456789", "ss# 12345 6789", "social security number: 123-45-6789".
-  // The 5+4 shape is checked only next to the word: on its own it is a zip code and a year
-  // ("NC 28801 2019 build").
-  { name: 'SSN', re: new RegExp(String.raw`\b(?:ssn|ss#|social security(?: number| no\.?)?)${SEP}(?:is${SEP})?(?:\d{3}-?\d{2}-?\d{4}|\d{5}[-.\s]\d{4})(?!\d)`, 'gi') },
+  // SSN shapes: 123-45-6789, 123.45.6789, 123 45 6789, 123/45/6789, 123_45_6789, 123-456-789,
+  // 123 456 789, and with a space around the dash as typed by hand: 123 - 45 - 6789, 123 -45- 6789
+  // (review round 4, L3). Each separator is one character, with at most one space either side.
+  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}(?: ?[-./_] ?|\s)\d{2}(?: ?[-./_] ?|\s)\d{4}${END}`, 'g') },
+  { name: 'SSN', re: new RegExp(String.raw`${START}\d{3}( ?[-._] ?|\s)\d{3}\1\d{3}${END}`, 'g') },
+  // With the word: "SSN 123456789", "ss# 12345 6789", "SSN: 123 456789", "social security
+  // number: 123-45-6789". The 5+4 and 3+6 shapes are checked only next to the word: on their own
+  // they are a zip code and a year ("NC 28801 2019 build").
+  { name: 'SSN', re: new RegExp(String.raw`\b(?:ssn|ss#|social security(?: number| no\.?)?)${SEP}(?:is${SEP})?(?:\d{3}[-_.\s]?\d{2}[-_.\s]?\d{4}|\d{3}[-_.\s]\d{6}|\d{5}[-_.\s]\d{4})(?!\d)`, 'gi') },
   { name: 'tax id', re: new RegExp(String.raw`\b(?:ein|tin|itin|tax\s?id)\b${SEP}(?:(?:no\.?|number)${SEP})?\d{2}-?\d{7}(?!\d)`, 'gi') },
   { name: 'passport number', re: new RegExp(String.raw`\bpassport${SEP}(?:(?:no\.?|number)${SEP})?[A-Z0-9]{6,9}\b`, 'gi') },
-  { name: 'card number', re: /\b(?:\d[ -]?){13,19}\b/g, test: (m) => luhn(m.replace(/\D/g, '')) },
+  // Cards: 13 to 19 digits, in groups split by single spaces, hyphens, dots or underscores.
+  { name: 'card number', re: /(?<![\d.])(?:\d[ ._-]?){12,18}\d(?!\d)/g, test: (m) => luhn(m.replace(/\D/g, '')) },
   { name: 'license number', re: new RegExp(String.raw`\b(?:driver'?s?\s{1,3}licen[sc]e|DL|license${SEP}(?:no|number|#))${SEP}(?:is${SEP})?[A-Z0-9-]{5,20}\b`, 'gi') },
   // "acct 123456", "acct no. 0012345", "acct-123456789012", "a/c 9876543210", "loan # 1234567",
   // "account number is 12345678". After "loan" a marker is needed ("loan # 1234567"): "loan
   // 300000" is a loan amount, not an account.
-  { name: 'account number', re: new RegExp(String.raw`(?:\b(?:acct|account)|(?<![\w/])a\/c)${SEP}(?:(?:no\.?|nbr|num|number)${SEP})?(?:is${SEP})?\d{6,17}(?!\d)`, 'gi') },
+  // Grouped too, as printed on statements: "acct 1234-5678-9012", "account 1234 5678 9012"
+  // (review round 4, L3): 6 to 17 digits in all, in groups split by single spaces or hyphens.
+  { name: 'account number', re: new RegExp(String.raw`(?:\b(?:acct|account)|(?<![\w/])a\/c)${SEP}(?:(?:no\.?|nbr|num|number)${SEP})?(?:is${SEP})?(?:\d{6,17}|\d{2,8}(?:[ -]\d{2,8}){1,5})(?!\d)`, 'gi'),
+    test: (m) => { const n = m.replace(/\D/g, '').length; return n >= 6 && n <= 17; } },
   { name: 'account number', re: new RegExp(String.raw`\bloan${SEP}(?:no\.?|nbr|num|number|#)${SEP}(?:is${SEP})?\d{6,17}(?!\d)`, 'gi') },
   // No keyword needed. A run of exactly 9 digits is the shape of a Social Security or bank
   // routing number. Phone numbers have 10 or 11 digits, so they are left alone.
