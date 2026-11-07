@@ -90,24 +90,59 @@ describe('N2: a lead flood does not silence real leads', () => {
   });
 });
 
-describe('N2: junk sent to the inbound address', () => {
+describe('N2 and M2 round 3: email forwarded to the inbound address', () => {
   const junk = (i: number, from = `junk${i}@example.com`) => ({ providerId: `p${i}`, from, to: 'leads@example.com', subject: `Junk ${i}`, text: 'nothing here', html: null });
-  it('sends one "needs review" email however many arrive, and "backup stopped" still goes', async () => {
+  const review = (a: MockAdapter) => a.sent.filter((m) => m.subject.startsWith('An email needs review'));
+  const rdc = (i: number, from = 'leads@notify.example.com') => ({ providerId: `r${i}`, from, to: 'leads@example.com', subject: 'New realtor.com lead',
+    text: `realtor.com\nName: Demo Person${i}\nEmail: demo${i}@example.com\nPhone: 828-555-01${String(i % 100).padStart(2, '0')}\n`, html: null });
+  it('one "needs review" email per sender, at most 5 a day, and "backup stopped" still goes', async () => {
     const w = world(); const adapter = new MockAdapter();
-    for (let i = 0; i < 40; i++) await processInbound(w.db as any, adapter, APP, undefined, junk(i));
-    expect(adapter.sent.filter((m) => m.subject === 'An email needs review')).toHaveLength(1);
-    expect(w.db.tables.inbound_emails).toHaveLength(40);
+    for (let i = 0; i < 3; i++) await processInbound(w.db as any, adapter, APP, undefined, junk(i, 'same@example.com'));
+    expect(review(adapter)).toHaveLength(1);
+    for (let i = 0; i < 40; i++) await processInbound(w.db as any, adapter, APP, undefined, junk(100 + i));
+    expect(review(adapter)).toHaveLength(5);
+    expect(w.db.tables.inbound_emails).toHaveLength(43);
     const sys = await sendAlert(w.db as any, adapter, settings() as any, APP, { subject: 'Problem: Nightly backup', text: 'x', key: 'check:backup', alsoBackup: true });
     expect(sys.ok).toBe(true);
   });
-  it('one sender can only turn so many emails into leads in an hour; the rest are kept for review', async () => {
+  it('junk at 09:00 does not silence an unreadable email from another sender at 10:00', async () => {
     const w = world(); const adapter = new MockAdapter();
-    const rdc = (i: number) => ({ providerId: `r${i}`, from: 'leads@notify.example.com', to: 'leads@example.com', subject: 'New realtor.com lead',
-      text: `realtor.com\nName: Demo Person${i}\nEmail: demo${i}@example.com\nPhone: 828-555-01${String(i % 100).padStart(2, '0')}\n`, html: null });
+    await processInbound(w.db as any, adapter, APP, undefined, junk(1));
+    w.advance(1);
+    await processInbound(w.db as any, adapter, APP, undefined, { providerId: 'u1', from: 'someone@example.net', to: 'leads@example.com', subject: 'Question about 12 Demo St', text: 'Can we see it Saturday?', html: null });
+    expect(review(adapter)).toHaveLength(2);
+    expect(review(adapter)[1].text).toContain('Question about 12 Demo St');
+  });
+  it('a Zillow lead is read and becomes a lead, even after junk', async () => {
+    const w = world(); const adapter = new MockAdapter();
+    await processInbound(w.db as any, adapter, APP, undefined, junk(1));
+    const r: any = await processInbound(w.db as any, adapter, APP, undefined, { providerId: 'z1', from: 'leads@zillow.example.com', to: 'leads@example.com', subject: 'New Zillow lead: Pat Example',
+      text: 'Zillow\nName: Pat Example\nEmail: pat.example@example.com\nPhone: 828-555-0199\nMessage: I would like a tour', html: null });
+    expect(r.parsed).toBe(true);
+    expect(w.db.tables.leads.map((l: any) => l.source)).toEqual(['Zillow']);
+    expect(adapter.sent.some((m) => m.subject === 'New lead: Pat Example')).toBe(true);
+  });
+  it('after 100 junk emails from rotating senders, a real realtor.com lead in the same hour is still read and alerted', async () => {
+    const w = world(); const adapter = new MockAdapter();
+    for (let i = 0; i < INBOUND_LIMITS.total; i++) await processInbound(w.db as any, adapter, APP, undefined, junk(i));
+    const r: any = await processInbound(w.db as any, adapter, APP, undefined, { providerId: 'real', from: 'leads@notify.example.com', to: 'leads@example.com', subject: 'New realtor.com lead',
+      text: 'realtor.com\nName: Demo Realbuyer\nEmail: demo.real@example.com\nPhone: 828-555-0142\n', html: null });
+    expect(r.parsed).toBe(true);
+    expect(w.db.tables.leads).toHaveLength(1);
+    expect(adapter.sent.some((m) => m.subject === 'New lead: Demo Realbuyer')).toBe(true);
+  });
+  it('emails from a known lead source are never capped: 25 realtor.com leads from one sender all become leads', async () => {
+    const w = world(); const adapter = new MockAdapter();
     const results = [];
     for (let i = 0; i < INBOUND_LIMITS.perSender + 5; i++) results.push(await processInbound(w.db as any, adapter, APP, undefined, rdc(i)));
+    expect(results.filter((r: any) => r.parsed)).toHaveLength(INBOUND_LIMITS.perSender + 5);
+    expect(w.db.tables.leads).toHaveLength(INBOUND_LIMITS.perSender + 5);
+  });
+  it('unknown senders are still capped: past the limit they are saved but not read', async () => {
+    const w = world(); const adapter = new MockAdapter();
+    const results = [];
+    for (let i = 0; i < INBOUND_LIMITS.perSender + 5; i++) results.push(await processInbound(w.db as any, adapter, APP, undefined, junk(i, 'one@example.com')));
     expect(results.filter((r: any) => r.limited)).toHaveLength(5);
-    expect(results.filter((r: any) => r.parsed)).toHaveLength(INBOUND_LIMITS.perSender);
     expect(w.db.tables.inbound_emails).toHaveLength(INBOUND_LIMITS.perSender + 5);
   });
 });

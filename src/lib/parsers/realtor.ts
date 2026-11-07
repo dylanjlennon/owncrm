@@ -1,6 +1,8 @@
-// Parser for Realtor.com lead notification emails, forwarded to the inbound address.
-// IMPORTANT: this matches a sample written from public descriptions. Check it against a
-// real email before you rely on it. If the template changes, leads go to Needs review.
+// Parser for lead notification emails from the big portals (Realtor.com, Zillow, Homes.com,
+// Trulia, Redfin), forwarded to the inbound address. They all list the lead as labelled lines
+// ("Name:", "Email:", "Phone:"), so one reader handles them; the portal only sets the source.
+// IMPORTANT: this matches samples written from public descriptions. Check it against a real
+// email from your portal before you rely on it. If a template changes, leads go to Needs review.
 export type ParsedLead = {
   first_name: string; last_name: string | null; email: string | null; phone: string | null;
   property: string | null; message: string | null; source: string; source_type: 'portal';
@@ -18,9 +20,22 @@ const LABELS: Record<string, RegExp> = {
 };
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
-export function looksLikeRealtor(from: string | null, subject: string | null, text: string): boolean {
+// The portals we have a reader for, and how each one names itself in the sender, subject or text.
+const PORTALS: { source: string; re: RegExp }[] = [
+  { source: 'Realtor.com', re: /realtor\.com/ },
+  { source: 'Zillow', re: /\bzillow\b/ },
+  { source: 'Homes.com', re: /\bhomes\.com\b/ },
+  { source: 'Trulia', re: /\btrulia\b/ },
+  { source: 'Redfin', re: /\bredfin\b/ },
+];
+
+/** Which known lead source an email is from, or null. Cheap: reads the first 4,000 characters. */
+export function knownLeadSource(from: string | null, subject: string | null, text: string): string | null {
   const hay = `${from ?? ''}\n${subject ?? ''}\n${text.slice(0, 4000)}`.toLowerCase();
-  return hay.includes('realtor.com');
+  return PORTALS.find((p) => p.re.test(hay))?.source ?? null;
+}
+export function looksLikeRealtor(from: string | null, subject: string | null, text: string): boolean {
+  return knownLeadSource(from, subject, text) === 'Realtor.com';
 }
 
 function grab(text: string, re: RegExp): string | null {
@@ -28,9 +43,10 @@ function grab(text: string, re: RegExp): string | null {
   return m ? m[1].trim().replace(/\s+/g, ' ').slice(0, 300) : null;
 }
 
-export function parseRealtorLead(from: string | null, subject: string | null, rawText: string): ParseResult {
+export function parsePortalLead(from: string | null, subject: string | null, rawText: string): ParseResult {
   if (!rawText || !rawText.trim()) return { ok: false, reason: 'The email had no readable text.' };
-  if (!looksLikeRealtor(from, subject, rawText)) return { ok: false, reason: 'Not from a sender we have a template for.' };
+  const source = knownLeadSource(from, subject, rawText);
+  if (!source) return { ok: false, reason: 'Not from a sender we have a template for.' };
   // Forwarding adds "> " at the start of each line.
   const text = rawText.replace(/^[> \t]+/gm, '');
   let first = grab(text, LABELS.first);
@@ -51,6 +67,8 @@ export function parseRealtorLead(from: string | null, subject: string | null, ra
   return { ok: true, lead: {
     first_name: first, last_name: last, email, phone,
     property: grab(text, LABELS.property), message: grab(text, LABELS.message),
-    source: 'Realtor.com', source_type: 'portal',
+    source, source_type: 'portal',
   } };
 }
+/** The original name, kept for callers and tests. Reads any known portal, not only Realtor.com. */
+export const parseRealtorLead = parsePortalLead;
