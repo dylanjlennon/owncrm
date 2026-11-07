@@ -1,7 +1,7 @@
 import { toCsv } from './csv';
 import { CONTRACT_VERSION } from '../../contract/lib/validate.mjs';
 import { containsSensitive } from '../../contract/lib/redact.mjs';
-import { mentionsProtectedTrait, looksLikeInstructions } from '../../contract/lib/policy.mjs';
+import { mentionsProtectedTrait, looksLikeInstructions, mentionsHealthOrLegal } from '../../contract/lib/policy.mjs';
 
 // A mapped spreadsheet becomes a contract, then goes through the one importer.
 export const IMPORT_FIELDS = ['first_name','last_name','email','phone','notes','stage','lead_source','source_type'] as const;
@@ -37,7 +37,8 @@ export function validateRow(raw: string[], mapping: Mapping): RowResult {
   if (email && !EMAIL_RE.test(email)) return { ok: false, reason: 'Email looks wrong', raw };
   if (phone && phone.replace(/\D/g, '').length < 10) return { ok: false, reason: 'Phone looks too short', raw };
   if (first.length > 100 || last.length > 100 || email.length > 320 || phone.length > 40) return { ok: false, reason: 'A value is too long', raw };
-  if (raw.some((c) => containsSensitive(c))) return { ok: false, reason: 'Holds an account, card, Social Security or license number, a password or wire details. Remove it and import again.', raw };
+  if (raw.some((c) => containsSensitive(c))) return { ok: false, reason: 'Holds an account, card, routing, Social Security or license number, a password or wire details. Remove it and import again.', raw };
+  if (raw.some((c) => mentionsHealthOrLegal(c))) return { ok: false, reason: 'Mentions health or a legal matter (an illness, treatment, custody, a lawsuit or bankruptcy). The CRM never stores these. Remove it and import again.', raw };
   const notes = get('notes').slice(0, 280);
   if (mentionsProtectedTrait(notes) || looksLikeInstructions(notes)) return { ok: false, reason: 'The note describes who someone is or reads like instructions. Edit the note and import again.', raw };
   const stage = get('stage').toLowerCase();

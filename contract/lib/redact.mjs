@@ -21,6 +21,11 @@ const RULES = [
   { name: 'card number', re: /\b(?:\d[ -]?){13,19}\b/g, test: (m) => luhn(m.replace(/\D/g, '')) },
   { name: 'license number', re: /\b(?:driver'?s?\s+licen[sc]e|DL|license\s*(?:no|number|#))\s*(?:is|:|#)?\s*[A-Z0-9-]{5,20}\b/gi },
   { name: 'account number', re: /\b(?:acct|account|loan)\s*(?:no|number|#)?\s*(?:is|:)?\s*\d{6,17}\b/gi },
+  // No keyword needed. A standalone run of exactly 9 digits is the shape of a Social Security
+  // or bank routing number. Phone numbers have 10 or 11 digits, so they are left alone.
+  { name: 'SSN or routing number', re: /(?<![\w.+-])\d{9}(?![\w-]|\.\d)/g },
+  // 12 to 17 digits in a row looks like a bank or loan account. Card numbers are caught above.
+  { name: 'account number', re: /(?<![\w.+-])\d{12,17}(?![\w-]|\.\d)/g },
 ];
 
 /**

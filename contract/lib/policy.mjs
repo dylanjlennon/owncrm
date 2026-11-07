@@ -40,8 +40,39 @@ export function classifyTopic(text) {
   return REAL_ESTATE_SIGNAL.test(text) ? 'real_estate' : 'unrelated';
 }
 
-// Text copied from an email that tries to give orders. Treated as data and refused in summaries.
-const INSTRUCTION_RE = /\b(ignore|disregard|forget|override)\b[^.\n]{0,40}\b(instructions?|rules?|prompt|previous|above)\b|\bupload (everything|all)\b|\bsystem prompt\b|\byou are now\b|\bdo not tell the (user|owner)\b/i;
+// Health and legal matters. Never stored anywhere in the CRM: the contract check, the CSV
+// importer and the history upload refuse any text column that mentions them. Kept narrower than
+// SENSITIVE_TOPICS.legal on purpose: "closing attorney" and "probate sale" are ordinary
+// real estate words, so they are allowed. This is a word list, so it misses anything phrased
+// another way. The owner's review of every summary is the real control.
+export const HEALTH_LEGAL_RE = new RegExp([
+  String.raw`\b(diagnos\w*|doctor'?s?|hospital\w*|surger(?:y|ies)|surgical|chemo\w*|radiation treatment|therapy|therapist|prescription\w*|medication\w*|cancer|tumou?r|biops(?:y|ies)|clinic|symptom\w*|mental health|rehab|dialysis|pregnan\w*|miscarriage|dementia|alzheimer'?s|terminal(?:ly)? ill|hospice)\b`,
+  String.raw`\b(lawsuits?|sued|suing|custody|divorc\w*|court (?:date|hearing|order)|subpoena\w*|bankrupt\w*|foreclos\w*|arrest\w*|criminal|felony|probation|parole|restraining order|eviction lawsuit)\b`,
+].join('|'), 'i');
+/** @param {string | null | undefined} text */
+export function mentionsHealthOrLegal(text) {
+  return !!text && HEALTH_LEGAL_RE.test(text);
+}
+
+// Text copied from an email that tries to give orders. Refused in summaries.
+// This is defense in depth only. A regex can't catch every way of phrasing an order
+// (other languages, odd spelling, text split over lines). The real controls are structural:
+// message text is labelled untrusted, the AI can't approve anyone, unknown keys are dropped,
+// and the owner reads and approves every person before anything is saved.
+const INSTRUCTION_PATTERNS = [
+  String.raw`\b(ignore|disregard|forget|override|bypass)\b[^\n]{0,40}\b(instructions?|rules?|prompt|previous|prior|earlier|above|everything|all)\b`,
+  String.raw`\b(ignore|disregard|forget)\s+(that|this|the above|what i said)\b`,
+  String.raw`\bupload (everything|all)\b`,
+  String.raw`\b(send|forward|email|e-mail|upload|export|share|post|copy|leak|transfer)\b[^.\n]{0,30}\b(all|every|entire|whole|full)\b[^.\n]{0,20}\b(data|contacts?|clients?|client list|database|records|emails|files|leads|passwords?|keys?|tokens?)\b`,
+  String.raw`\b(send|forward|email|upload|export|share)\b[^.\n]{0,15}\b(the|my|your)\s+(client list|contact list|database|crm|address book|contacts)\b`,
+  String.raw`\b(new|updated|real|actual|hidden|secret)\s+instructions?\b`,
+  String.raw`\bsystem prompt\b|\byou are now\b|\bdo not tell the (user|owner)\b|\bjailbreak\b|\bdeveloper mode\b`,
+  String.raw`\b(pretend|act as if|act like|behave as if)\b[^.\n]{0,20}\b(you|you're|you are|to be)\b`,
+  String.raw`\b(approve|mark)\b[^.\n]{0,20}\b(every|everyone|all)\b[^.\n]{0,20}\b(candidates?|people|contacts|rows|approved)\b|\bapprove every(one|body)?\b`,
+  String.raw`<\/?\s*(system|assistant|user|instructions?|prompt)\s*>|^\s*(system|assistant)\s*:`,
+  String.raw`[A-Za-z0-9+/]{40,}={0,2}`,
+];
+const INSTRUCTION_RE = new RegExp(INSTRUCTION_PATTERNS.join('|'), 'im');
 /** @param {string | null | undefined} text */
 export function looksLikeInstructions(text) {
   return !!text && INSTRUCTION_RE.test(text);

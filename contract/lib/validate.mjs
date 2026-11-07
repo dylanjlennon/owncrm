@@ -4,7 +4,7 @@
 import { SCHEMAS } from './schemas.mjs';
 import { parseCsv, toCsv } from './csv.mjs';
 import { containsSensitive } from './redact.mjs';
-import { mentionsProtectedTrait, looksLikeInstructions } from './policy.mjs';
+import { mentionsProtectedTrait, looksLikeInstructions, mentionsHealthOrLegal } from './policy.mjs';
 
 export const CONTRACT_VERSION = '1.0.0';
 export const CSV_FILES = ['households', 'people', 'contact_methods', 'deals', 'interactions', 'consent', 'suppressions', 'source_evidence'];
@@ -90,7 +90,8 @@ export function validateContract(input) {
       checkRow(schema, row, (c, p) => push(file, line, c, p));
       for (const [col, v] of Object.entries(row)) {
         if (typeof v !== 'string') continue;
-        if (containsSensitive(v)) push(file, line, col, 'Looks like a Social Security, card, account, license number, password or wire details. Remove it.');
+        if (containsSensitive(v)) push(file, line, col, 'Looks like a Social Security, card, account, routing, license number, password or wire details. Remove it.');
+        if (mentionsHealthOrLegal(v)) push(file, line, col, 'Mentions health or a legal matter (for example an illness, treatment, custody, a lawsuit or bankruptcy). The CRM never stores these. Remove it.');
         if (JUDGMENT_FIELDS.has(col) || (name === 'interactions' && col === 'summary')) {
           if (mentionsProtectedTrait(v)) push(file, line, col, 'Describes who someone is. Use dates and what happened only.');
           if (looksLikeInstructions(v)) push(file, line, col, 'Reads like instructions copied from a message. Summaries only.');
