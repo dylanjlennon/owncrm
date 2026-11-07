@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { requireOwner } from '@/lib/auth';
 import { IMPORT_FIELDS, guessMapping, splitRows, readDraft, readErrorFile, type Mapping } from '@/lib/importing';
 import { Flash } from '@/components/Flash';
+import { contractCheckSentence } from '@/lib/rescue-view';
 import { commitImport, undoImport } from '../actions';
 
 const LABELS: Record<string, string> = { first_name: 'First name', last_name: 'Last name', email: 'Email', phone: 'Phone', notes: 'Notes', stage: 'Stage', lead_source: 'Where they came from', source_type: 'Source type' };
@@ -37,7 +38,7 @@ export default async function ImportDetail({ params, searchParams }: { params: P
         <Flash code={sp.msg} />
         {payload ? (
           <div className="panel">
-            <p data-testid="contract-ok">The folder passed the check: {payload.households.length} households, {payload.people.length} people, {payload.contact_methods.length} emails and phones, {payload.interactions.length} summaries, {payload.suppressions.length} opt-outs.</p>
+            <p data-testid="contract-ok">{contractCheckSentence(payload)}</p>
             <form action={commitImport}><input type="hidden" name="id" value={id} /><button type="submit">Import {payload.households.length} households</button></form>
           </div>
         ) : (

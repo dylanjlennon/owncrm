@@ -8,6 +8,7 @@ import { Flash } from '@/components/Flash';
 import { addConsent, addDealDate, addFollowUp, addMethod, dealDateDone, logInteraction, saveDeal, sendEmail, setArchived, updateContact } from '../actions';
 import { FollowUpItem } from '@/components/FollowUpItem';
 import { REPEAT_CHOICES } from '@/lib/followups';
+import { contactNote } from '@/lib/rescue-view';
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const STATUS_TAG: Record<string, string> = { sent: 'Sent (accepted by provider)', delivered: 'Delivered', bounced: 'Bounced', complained: 'Marked as spam', failed: 'Not sent', queued: 'Queued', delayed: 'Delayed' };
@@ -35,6 +36,10 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
     ? await db.from('suppressions').select('normalized, reason').eq('kind', 'email').in('normalized', emailMethods.map((m: any) => m.normalized))
     : { data: [] as any[] };
   const suppressed = new Map((supp ?? []).map((x: any) => [x.normalized, x.reason]));
+  const { data: imp } = h.import_id
+    ? await db.from('imports').select('kind').eq('id', h.import_id).maybeSingle()
+    : { data: null as any };
+  const note = contactNote(h.notes, imp?.kind);
   return (
     <>
       <Flash code={sp.msg} />
@@ -44,6 +49,14 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
         {h.stage_drift && <span className="tag warn">Saved stage is &quot;{h.stored_stage}&quot;. Deals decide what shows.</span>}
         {h.archived_at && <span className="tag bad">Archived</span>}
       </div>
+
+      {note && (
+        <section className="panel" data-testid="contact-note">
+          <h2>{note.title}</h2>
+          <p className="u-prewrap">{note.text}</p>
+          {note.title === 'From your rescue' && <small>Your AI wrote this from your old messages, and you approved it. Change it under Details, Notes.</small>}
+        </section>
+      )}
 
       <section className="panel">
         <dl className="kv">
@@ -102,7 +115,7 @@ export default async function ContactPage({ params, searchParams }: { params: Pr
             {(timeline ?? []).map((i: any) => (
               <li key={i.id}><strong>{i.kind}</strong> <small>{formatDateTime(i.occurred_at, s.timezone)}</small><br />{i.summary}</li>
             ))}
-            {!timeline?.length && <li className="muted">Nothing yet.</li>}
+            {!timeline?.length && <li className="muted">{note ? `Nothing logged here yet. ${note.title === 'From your rescue' ? 'Your rescue summary is at the top of this page.' : 'Your notes are at the top of this page.'}` : 'Nothing yet.'}</li>}
           </ul>
         </section>
 
