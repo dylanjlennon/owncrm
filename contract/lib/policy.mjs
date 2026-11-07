@@ -1,6 +1,9 @@
 // @ts-check
 // Shared rules for "Connect your history". The local tool and the CRM server both use
 // this file, so the rules can't drift apart.
+import { normalizeText } from './redact.mjs';
+// Word lists also ignore accents, so "cáncer" reads as "cancer".
+const plain = (/** @type {string} */ t) => normalizeText(t).normalize('NFD').replace(/\p{M}/gu, '');
 
 /** Sources the CRM accepts from the local tool. */
 export const HISTORY_SOURCES = ['gmail','outlook','imessage','google_voice','phone_contacts','android_sms','crm_export','deal_records','website_lists'];
@@ -23,7 +26,7 @@ const PROTECTED_RE = new RegExp(`\\b(${PROTECTED.map((w) => w.replace(/ /g, '\\s
 
 /** @param {string | null | undefined} text */
 export function mentionsProtectedTrait(text) {
-  return !!text && PROTECTED_RE.test(text);
+  return !!text && PROTECTED_RE.test(plain(text));
 }
 
 // Topics that are never summarized and keep a thread out of scope.
@@ -40,18 +43,22 @@ export function classifyTopic(text) {
   return REAL_ESTATE_SIGNAL.test(text) ? 'real_estate' : 'unrelated';
 }
 
-// Health and legal matters. Never stored anywhere in the CRM: the contract check, the CSV
-// importer and the history upload refuse any text column that mentions them. Kept narrower than
-// SENSITIVE_TOPICS.legal on purpose: "closing attorney" and "probate sale" are ordinary
-// real estate words, so they are allowed. This is a word list, so it misses anything phrased
-// another way. The owner's review of every summary is the real control.
+// Health and legal matters. The importer (contract check, spreadsheet import, history upload)
+// refuses any text column that mentions them, and a refused row is not stored. Text the owner
+// types into the app (notes, logged calls) and lead-form messages are not checked: the database
+// does not enforce this list. Kept narrower than SENSITIVE_TOPICS.legal on purpose: "closing
+// attorney", "probate sale" and "assisted living" (a property type) are ordinary real estate
+// words, so they are allowed, and "died" alone is left out ("the deal died"). Text is normalized
+// first (fullwidth letters, zero-width spaces), and plurals are covered. This is still a word
+// list, so it misses anything phrased another way. The owner's review is the real control.
 export const HEALTH_LEGAL_RE = new RegExp([
-  String.raw`\b(diagnos\w*|doctor'?s?|hospital\w*|surger(?:y|ies)|surgical|chemo\w*|radiation treatment|therapy|therapist|prescription\w*|medication\w*|cancer|tumou?r|biops(?:y|ies)|clinic|symptom\w*|mental health|rehab|dialysis|pregnan\w*|miscarriage|dementia|alzheimer'?s|terminal(?:ly)? ill|hospice)\b`,
-  String.raw`\b(lawsuits?|sued|suing|custody|divorc\w*|court (?:date|hearing|order)|subpoena\w*|bankrupt\w*|foreclos\w*|arrest\w*|criminal|felony|probation|parole|restraining order|eviction lawsuit)\b`,
+  String.raw`\b(diagnos\w*|doctor'?s?|hospital\w*|surger(?:y|ies)|surgical|chemo\w*|radiation treatments?|therap(?:y|ies)|therapists?|prescriptions?|medications?|cancers?|cancerous|tumou?rs?|biops(?:y|ies)|clinics?|symptom\w*|mental health|rehab\w*|dialysis|pregnan\w*|miscarriage\w*|dementia|alzheimer'?s|terminal(?:ly)? ill|hospice\w*)\b`,
+  String.raw`\b(oncolog\w*|cardiolog\w*|strokes?|heart attacks?|icu|intensive care|hiv|diabet\w*|multiple sclerosis|parkinson'?s|autis\w*|ivf|remission|(?:clinical|major|severe|postpartum) depression|depressive|antidepressants?|depression (?:and|&) anxiety|anxiety (?:and|&) depression|memory care|nursing homes?|medical leave|sick leave|passed away|died (?:of|from))\b`,
+  String.raw`\b(lawsuits?|sued|suing|custody|custodial|divorc\w*|court (?:date|hearing|order)s?|subpoena\w*|bankrupt\w*|chapter (?:7|11|13)\b(?: filing| bankruptcy)?|foreclos\w*|arrest\w*|criminal|felon\w*|misdemeanou?r\w*|probation|parole|restraining orders?|eviction lawsuits?|judgments? against|jail\w*|prison\w*|incarcerat\w*|dui|dwi|indict\w*|convict(?:ed|ion)s?|litigat\w*)\b`,
 ].join('|'), 'i');
 /** @param {string | null | undefined} text */
 export function mentionsHealthOrLegal(text) {
-  return !!text && HEALTH_LEGAL_RE.test(text);
+  return !!text && HEALTH_LEGAL_RE.test(plain(text));
 }
 
 // Text copied from an email that tries to give orders. Refused in summaries.
@@ -75,5 +82,5 @@ const INSTRUCTION_PATTERNS = [
 const INSTRUCTION_RE = new RegExp(INSTRUCTION_PATTERNS.join('|'), 'im');
 /** @param {string | null | undefined} text */
 export function looksLikeInstructions(text) {
-  return !!text && INSTRUCTION_RE.test(text);
+  return !!text && INSTRUCTION_RE.test(normalizeText(text));
 }

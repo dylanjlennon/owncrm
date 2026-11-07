@@ -112,3 +112,27 @@ describe('H1: the local rescue drops AI judgments that mention health', () => {
     expect(r.dropped[0]).toMatch(/refused/);
   });
 });
+
+describe('N11 and H1/H3 round 2: Unicode, plurals and missed shapes', async () => {
+  const { containsSensitive, normalizeText } = await import('../contract/lib/redact.mjs');
+  it('normalizes before matching: zero-width spaces, soft hyphens, fullwidth digits and letters, accents', () => {
+    expect(normalizeText('can​cer')).toBe('cancer');
+    for (const t of ['can​cer diagnosis', 'chemo­therapy', 'Ｃａｎｃｅｒ', 'cáncer']) expect(mentionsHealthOrLegal(t), t).toBe(true);
+    for (const t of ['123​456789', '１２３４５６７８９', '12­3-45-6789', '０２１００００２１']) expect(containsSensitive(t), t).toBe(true);
+  });
+  it('catches plurals and the terms the round 2 review listed', () => {
+    for (const t of ['beat cancers twice', 'two tumors removed', 'visits clinics weekly', 'therapies ongoing', 'oncologist visit', 'stroke last spring',
+      'heart attack', 'in the ICU', 'HIV positive', 'clinical depression', 'depression and anxiety', 'memory care', 'nursing home', 'passed away',
+      'jail', 'prison sentence', 'DUI', 'indicted', 'litigation pending', 'Chapter 7 filing', 'judgment against him']) expect(mentionsHealthOrLegal(t), t).toBe(true);
+  });
+  it('catches the number shapes round 2 found', () => {
+    for (const t of ['a/c 9876543210', 'acct no. 0012345', 'acct-123456789012', '_021000021', '021000021_', '123.45.6789', '123 456 789', '12345 6789',
+      '123-456-789', 'EIN 12-3456789', 'passport 123456789', 'ssn123456789']) expect(containsSensitive(t), t).toBe(true);
+  });
+  it('still leaves ordinary real estate text alone', () => {
+    for (const t of ['phone 8284120678', 'call 828-555-0142', 'MLS# 4123456', 'zip 28801-1234', '2026-11-07', 'price 450000', '021000021.5', 'account ending 4321'])
+      expect(containsSensitive(t), t).toBe(false);
+    for (const t of ['Closing attorney booked, inspection Friday, probate sale', 'the deal died at inspection', 'assisted living community nearby', 'Great stroke of luck on the appraisal'.replace('stroke', 'stretch')])
+      expect(mentionsHealthOrLegal(t), t).toBe(false);
+  });
+});
