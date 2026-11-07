@@ -61,3 +61,41 @@ describe('H2: values past the cap are refused, not checked slowly', () => {
     expect(containsSensitive('account ending 4321')).toBe(false);
   });
 });
+
+// Review round 4, M3 and L1: the HTML tag strip and the From-header rules. 200,000 characters is
+// the most an inbound email body keeps.
+describe('M3 round 4: email HTML and From headers stay fast', async () => {
+  const { htmlToText, senderAddress } = await import('@/lib/html-text');
+  const BIG = 200_000;
+  const htmlCases: [string, string][] = [
+    ['200,000 "<"', '<'.repeat(BIG)], ['"<a" repeated', '<a'.repeat(BIG / 2)], ['"<br" repeated', '<br'.repeat(BIG / 3)],
+    ['"</p" repeated', '</p'.repeat(BIG / 3)], ['one "<" then letters', `<${'a'.repeat(BIG - 1)}`], ['"<" and spaces', '< '.repeat(BIG / 2)],
+  ];
+  it.each(htmlCases)('htmlToText on %s finishes in under 50 ms', (_n, s) => {
+    htmlToText('<b>x</b>');
+    expect(time(() => htmlToText(s))).toBeLessThan(50);
+  });
+  it('still turns ordinary email HTML into readable lines', () => {
+    expect(htmlToText('<p>Name: Demo Example</p><div>Email: demo@example.com</div>Phone:<br/>828-555-0100<br>x').split('\n').map((l) => l.trim()))
+      .toEqual(['Name: Demo Example', 'Email: demo@example.com', 'Phone:', '828-555-0100', 'x']);
+  });
+  it.each([['100,000 quote marks', "'".repeat(100_000)], ['100,000 letters', 'a'.repeat(100_000)], ['100,000 dots', '.'.repeat(100_000)]])(
+    'senderAddress on a From header of %s finishes in under 50 ms', (_n, s) => {
+      expect(time(() => senderAddress(s))).toBeLessThan(50);
+    });
+  it('senderAddress still reads ordinary From headers', () => {
+    expect(senderAddress('"Demo Example" <Demo@Example.com>')).toBe('demo@example.com');
+    expect(senderAddress('leads@example.com')).toBe('leads@example.com');
+    expect(senderAddress(null)).toBe('unknown');
+  });
+  it('no source file strips tags with the slow rule any more', async () => {
+    const { readFileSync, readdirSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const root = join(__dirname, '..');
+    const files: string[] = [];
+    const walk = (d: string) => { for (const e of readdirSync(d, { withFileTypes: true })) { const p = join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(m?js|tsx?)$/.test(e.name)) files.push(p); } };
+    for (const d of ['src', 'rescue', 'contract', 'scripts']) walk(join(root, d));
+    const slow = files.filter((f) => readFileSync(f, 'utf8').includes('<[^>]+>'));
+    expect(slow.map((f) => f.slice(root.length + 1))).toEqual([]);
+  });
+});

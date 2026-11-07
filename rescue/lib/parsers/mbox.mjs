@@ -22,7 +22,7 @@ export function parseMbox(path, opts) {
       if (i > 0) h[line.slice(0, i).toLowerCase()] = line.slice(i + 1).trim();
     }
     if (/quoted-printable/i.test(h['content-transfer-encoding'] ?? '')) body = decodeQP(body);
-    body = body.replace(/^--.*$/gm, '').replace(/^Content-[^\n]*$/gim, '').replace(/<[^>]+>/g, ' ');
+    body = body.replace(/^--.*$/gm, '').replace(/^Content-[^\n]*$/gim, '').replace(/<[^<>]*>/g, ' ');
     const from = handleFrom(h.from ?? '');
     const fromMe = !!from && opts.me.includes(from.value);
     const others = fromMe ? [h.to, h.cc].filter(Boolean).join(',').split(',').map((x) => handleFrom(x)).filter((x) => x && !opts.me.includes(x.value)) : [from];

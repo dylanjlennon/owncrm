@@ -3,6 +3,7 @@ import { getSettings } from '@/lib/settings';
 import { formatDateTime } from '@/lib/time';
 import { ZILLOW_NOTICE } from '@/lib/config';
 import { Flash } from '@/components/Flash';
+import { htmlToText } from '@/lib/html-text';
 import { leadFromReview, resolveReview } from './actions';
 
 export default async function Review({ searchParams }: { searchParams: Promise<Record<string, string>> }) {
@@ -22,7 +23,7 @@ export default async function Review({ searchParams }: { searchParams: Promise<R
           <h3>{e.subject || '(no subject)'}</h3>
           <p className="muted">From {e.from_address || 'unknown'}, {formatDateTime(e.received_at, s.timezone)}. Why it is here: {e.review_reason}</p>
           {/* Shown as plain text only. Email HTML is never rendered in the app. */}
-          <pre className="u-pre">{(e.text_body || (e.html_body || '').replace(/<[^>]+>/g, ' ')).slice(0, 5000)}</pre>
+          <pre className="u-pre">{(e.text_body ? String(e.text_body).slice(0, 5000) : htmlToText(e.html_body, 20_000)).slice(0, 5000)}</pre>
           {e.body_truncated && <p className="muted">This email was very long. The first part is saved.</p>}
           <form action={leadFromReview} className="row">
             <input type="hidden" name="id" value={e.id} />

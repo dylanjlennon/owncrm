@@ -93,7 +93,7 @@ describe('N2: a lead flood does not silence real leads', () => {
 describe('N2 and M2 round 3: email forwarded to the inbound address', () => {
   const junk = (i: number, from = `junk${i}@example.com`) => ({ providerId: `p${i}`, from, to: 'leads@example.com', subject: `Junk ${i}`, text: 'nothing here', html: null });
   const review = (a: MockAdapter) => a.sent.filter((m) => m.subject.startsWith('An email needs review'));
-  const rdc = (i: number, from = 'leads@notify.example.com') => ({ providerId: `r${i}`, from, to: 'leads@example.com', subject: 'New realtor.com lead',
+  const rdc = (i: number, from = 'leads@email.realtor.com') => ({ providerId: `r${i}`, from, to: 'leads@example.com', subject: 'New realtor.com lead',
     text: `realtor.com\nName: Demo Person${i}\nEmail: demo${i}@example.com\nPhone: 828-555-01${String(i % 100).padStart(2, '0')}\n`, html: null });
   it('one "needs review" email per sender, at most 5 a day, and "backup stopped" still goes', async () => {
     const w = world(); const adapter = new MockAdapter();
@@ -125,13 +125,13 @@ describe('N2 and M2 round 3: email forwarded to the inbound address', () => {
   it('after 100 junk emails from rotating senders, a real realtor.com lead in the same hour is still read and alerted', async () => {
     const w = world(); const adapter = new MockAdapter();
     for (let i = 0; i < INBOUND_LIMITS.total; i++) await processInbound(w.db as any, adapter, APP, undefined, junk(i));
-    const r: any = await processInbound(w.db as any, adapter, APP, undefined, { providerId: 'real', from: 'leads@notify.example.com', to: 'leads@example.com', subject: 'New realtor.com lead',
+    const r: any = await processInbound(w.db as any, adapter, APP, undefined, { providerId: 'real', from: 'Realtor.com <leads@email.realtor.com>', to: 'leads@example.com', subject: 'New realtor.com lead',
       text: 'realtor.com\nName: Demo Realbuyer\nEmail: demo.real@example.com\nPhone: 828-555-0142\n', html: null });
     expect(r.parsed).toBe(true);
     expect(w.db.tables.leads).toHaveLength(1);
     expect(adapter.sent.some((m) => m.subject === 'New lead: Demo Realbuyer')).toBe(true);
   });
-  it('emails from a known lead source are never capped: 25 realtor.com leads from one sender all become leads', async () => {
+  it('emails from a known lead source have a higher limit: 25 realtor.com leads from one portal address all become leads', async () => {
     const w = world(); const adapter = new MockAdapter();
     const results = [];
     for (let i = 0; i < INBOUND_LIMITS.perSender + 5; i++) results.push(await processInbound(w.db as any, adapter, APP, undefined, rdc(i)));

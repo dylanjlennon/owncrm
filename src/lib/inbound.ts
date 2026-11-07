@@ -5,17 +5,26 @@ import { takeLead } from './leads';
 import { getSettings } from './settings';
 import { sendAlert } from './alerts';
 import { createHash } from 'node:crypto';
+import { htmlToText, senderAddress } from './html-text';
 
 const MAX_BODY = 200_000;
-// Forwarded email limits, for senders we can't read only. Past them the email is still saved to
-// Needs review, but it is not read and sends no email of its own. Email from a known lead source
-// (Realtor.com, Zillow, Homes.com, Trulia, Redfin) is never held back by these limits: it is
-// read first, and a real lead is never lost because junk used up the hour.
+// Forwarded email limits. Past them the email is still saved to Needs review, but it is not read
+// and sends no email of its own. Review round 4, M1: "known lead source" means the From address is
+// at a real portal domain (src/lib/parsers/realtor.ts, PORTAL_DOMAINS). The display name, subject
+// and text don't count. Known sources have their own, higher limits and their own hourly total,
+// so junk from other senders can't use up the hour for a real portal lead, and a forged portal
+// address can't send without limit either.
 export const INBOUND_LIMITS = { perSender: 20, total: 100 };
+export const PORTAL_LIMITS = { perSender: 30, total: 60 };
+// Leads from one portal address get one-by-one alerts per person (the lead's own email or phone)
+// for up to this many leads in 24 hours. Past that, the rest from that address are counted as one
+// sender, so they share 3 one-by-one alerts a day and then go in the "Many new leads" list. A lead
+// read from any other sender (an email you forwarded by hand, or anything else) is counted per
+// sender from the start.
+export const PORTAL_LEADS_PER_SENDER_DAY = 8;
 // "Needs review" emails: one per sender per 12 hours, and at most this many senders a day.
 export const REVIEW_ALERTS_PER_DAY = 5;
 const hashed = (prefix: string, value: string) => `${prefix}:${createHash('sha256').update(`${prefix}:${value}`).digest('hex').slice(0, 24)}`;
-const senderAddress = (from: string | null) => (from ?? '').match(/[^\s<>"]+@[^\s<>"]+/)?.[0]?.toLowerCase() ?? 'unknown';
 
 // Every inbound email is stored before anything else happens. Emails from a known lead source
 // become leads. Anything we can't read goes to Needs review and alerts the owner. Nothing is dropped.
@@ -33,28 +42,32 @@ export async function processInbound(db: SupabaseClient, adapter: EmailAdapter, 
     throw new Error(error.message);
   }
   const sender = senderAddress(e.from);
-  const bodyForParse = text || html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(p|div|tr)>/gi, '\n').replace(/<[^>]+>/g, ' ');
-  // Known lead sources first, before any limit.
-  const known = !e.fetchFailed && !!knownLeadSource(e.from, e.subject, bodyForParse);
-  if (!known) {
-    // Rate limits for everything else: per sender first, so one sender can't use up the hour for everyone.
-    const hit = async (bucket: string, max: number) => (await db.rpc('hit_rate_limit', { p_bucket: bucket, p_max: max, p_window_seconds: 3600 })).data === true;
-    const withinLimits = (await hit(hashed('inbound', sender), INBOUND_LIMITS.perSender)) && (await hit('inbound:all', INBOUND_LIMITS.total));
-    if (!withinLimits) {
-      await db.from('inbound_emails').update({ review_reason: 'Saved but not read: too many forwarded emails this hour from senders the CRM cannot read.' }).eq('id', row.id);
-      return { parsed: false, limited: true };
-    }
+  const bodyForParse = text || htmlToText(html);
+  // Known by the From address's domain only. Every sender has a limit: per sender first, so one
+  // sender can't use up the hour for everyone, then a total. Known sources have their own total.
+  const known = !e.fetchFailed && !!knownLeadSource(e.from);
+  const hit = async (bucket: string, max: number, seconds = 3600) => (await db.rpc('hit_rate_limit', { p_bucket: bucket, p_max: max, p_window_seconds: seconds })).data === true;
+  const limits = known ? PORTAL_LIMITS : INBOUND_LIMITS;
+  const withinLimits = (await hit(hashed(known ? 'inbound-portal' : 'inbound', sender), limits.perSender))
+    && (await hit(known ? 'inbound:portal' : 'inbound:all', limits.total));
+  if (!withinLimits) {
+    await db.from('inbound_emails').update({ review_reason: known
+      ? 'Saved but not read: too many emails this hour from this lead site address.'
+      : 'Saved but not read: too many forwarded emails this hour from senders the CRM cannot read.' }).eq('id', row.id);
+    return { parsed: false, limited: true };
   }
   const parsed = e.fetchFailed ? { ok: false as const, reason: 'Could not fetch the email body from the provider.' } : parsePortalLead(e.from, e.subject, bodyForParse);
   if (parsed.ok) {
     try {
-      // The per-address rule for portal leads is per person (the lead's own email or phone):
-      // every portal lead comes from the same portal sender.
+      // The per-address rule. A real portal address sends every portal lead, so its leads are
+      // counted per person, up to PORTAL_LEADS_PER_SENDER_DAY a day from that address. Any other
+      // sender is counted as one address, like a web form visitor.
       const person = (parsed.lead.email ?? parsed.lead.phone ?? '').toLowerCase().replace(/[^\w@.+-]/g, '');
+      const perPerson = known && person && (await hit(hashed('portal-leads', sender), PORTAL_LEADS_PER_SENDER_DAY, 86400));
       const lead = await takeLead(db, adapter, appUrl, linkSecret, {
         ...parsed.lead, channel: 'email', consent_status: 'unknown', consent_wording: null,
         message: [parsed.lead.property && `Property: ${parsed.lead.property}`, parsed.lead.message].filter(Boolean).join('\n') || null,
-      }, { floodKey: person ? hashed('lead-person', person) : null });
+      }, { floodKey: perPerson ? hashed('lead-person', person) : hashed('lead-sender', sender) });
       await db.from('inbound_emails').update({ status: 'parsed', parser: parsed.lead.source, parsed: parsed.lead, household_id: lead.household_id, review_reason: null }).eq('id', row.id);
       return { parsed: true, householdId: lead.household_id };
     } catch (err: any) {

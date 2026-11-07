@@ -7,6 +7,8 @@ export type ParsedLead = {
   first_name: string; last_name: string | null; email: string | null; phone: string | null;
   property: string | null; message: string | null; source: string; source_type: 'portal';
 };
+import { fromAddress } from '../html-text';
+
 export type ParseResult = { ok: true; lead: ParsedLead } | { ok: false; reason: string };
 
 const LABELS: Record<string, RegExp> = {
@@ -20,8 +22,22 @@ const LABELS: Record<string, RegExp> = {
 };
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 
-// The portals we have a reader for, and how each one names itself in the sender, subject or text.
-const PORTALS: { source: string; re: RegExp }[] = [
+// The portals we have a reader for, by their real sending domains. Review round 4, M1: an email
+// counts as "from a known lead source" only when the address in its From header (not the display
+// name) is at one of these domains or a subdomain of one ("leads@email.realtor.com"). The display
+// name, subject and text are never read for this, because anyone can type "Zillow" there.
+// A From header can still be forged; see SECURITY.md. Known sources still have hourly limits,
+// just higher ones (INBOUND_LIMITS in src/lib/inbound.ts).
+export const PORTAL_DOMAINS: { source: string; domains: string[] }[] = [
+  { source: 'Realtor.com', domains: ['realtor.com', 'move.com'] },
+  { source: 'Zillow', domains: ['zillow.com'] },
+  { source: 'Trulia', domains: ['trulia.com'] },
+  { source: 'Homes.com', domains: ['homes.com'] },
+  { source: 'Redfin', domains: ['redfin.com'] },
+];
+// The same portals as named in the text of an email the owner forwarded by hand. Used only to
+// label the lead's source and to know which reader to use, never to lift a limit.
+const PORTAL_NAMES: { source: string; re: RegExp }[] = [
   { source: 'Realtor.com', re: /realtor\.com/ },
   { source: 'Zillow', re: /\bzillow\b/ },
   { source: 'Homes.com', re: /\bhomes\.com\b/ },
@@ -29,13 +45,20 @@ const PORTALS: { source: string; re: RegExp }[] = [
   { source: 'Redfin', re: /\bredfin\b/ },
 ];
 
-/** Which known lead source an email is from, or null. Cheap: reads the first 4,000 characters. */
-export function knownLeadSource(from: string | null, subject: string | null, text: string): string | null {
-  const hay = `${from ?? ''}\n${subject ?? ''}\n${text.slice(0, 4000)}`.toLowerCase();
-  return PORTALS.find((p) => p.re.test(hay))?.source ?? null;
+/** The known lead source an email is from, decided by the From address's domain only, or null. */
+export function knownLeadSource(from: string | null): string | null {
+  const addr = fromAddress(from);
+  if (!addr) return null;
+  const domain = addr.slice(addr.lastIndexOf('@') + 1);
+  return PORTAL_DOMAINS.find((p) => p.domains.some((d) => domain === d || domain.endsWith(`.${d}`)))?.source ?? null;
 }
-export function looksLikeRealtor(from: string | null, subject: string | null, text: string): boolean {
-  return knownLeadSource(from, subject, text) === 'Realtor.com';
+/** A portal named in the subject or the first 4,000 characters of the text. Labels only. */
+export function namedPortal(subject: string | null, text: string): string | null {
+  const hay = `${subject ?? ''}\n${text.slice(0, 4000)}`.toLowerCase();
+  return PORTAL_NAMES.find((p) => p.re.test(hay))?.source ?? null;
+}
+export function looksLikeRealtor(from: string | null): boolean {
+  return knownLeadSource(from) === 'Realtor.com';
 }
 
 function grab(text: string, re: RegExp): string | null {
@@ -45,7 +68,8 @@ function grab(text: string, re: RegExp): string | null {
 
 export function parsePortalLead(from: string | null, subject: string | null, rawText: string): ParseResult {
   if (!rawText || !rawText.trim()) return { ok: false, reason: 'The email had no readable text.' };
-  const source = knownLeadSource(from, subject, rawText);
+  // From a portal's own address, or forwarded by hand with the portal named in the text.
+  const source = knownLeadSource(from) ?? namedPortal(subject, rawText);
   if (!source) return { ok: false, reason: 'Not from a sender we have a template for.' };
   // Forwarding adds "> " at the start of each line.
   const text = rawText.replace(/^[> \t]+/gm, '');
